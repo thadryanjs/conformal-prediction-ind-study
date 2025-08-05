@@ -1,0 +1,6 @@
+# Table of contents
+format: jb-book
+root: index.md
+chapters:
+  - file: 00_create-datafile-V3.ipynb
+  - file: 01_create-datafile-V2.ipynb

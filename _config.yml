@@ -1,0 +1,8 @@
+# Book settings
+title: Theory Project Ideas
+author: Thadryan
+
+execute:
+  execute_notebooks: false
+  allow_errors: false
+  timeout: -1
