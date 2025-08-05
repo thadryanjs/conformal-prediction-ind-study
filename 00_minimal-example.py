@@ -14,114 +14,74 @@
 #     name: python3
 # ---
 
-# %% [markdown]
-# # Problem Formulation
-# Consider an optimization problem with four variables:
-# - `option`: a categorical with five levels: A, B, C, D, E
-# - `condition`: a categorical with three levels: condition1, condition2, condition3
-# - `satisfaction`: a numeric representing satisfaction on a scale from 1 to 10
-# - `cost`: a numerical variable representing cost in monetary units
-# In historical data we have all of these variables. When new subjects arrive, we have only condition. We want to predict-then-optimize the satisfaction contrainted by cost. We will estimate the costs from historial data. We will then predict satisfaction for each option and condition, and then optimize the satisfaction under the cost constraint. The twist will be using decision-focused conformal prediction to produce intervals for satisfaction that are cost-aware.
-
-# %% [markdown]
-# ```python
-# # traditional model predicting cost
-# decision_cost_vector = cost_model.coefficients
-# # conformal model producing intervals for satisfaction that are cost-aware
-# bounds = DFCP(decision_cost_vector)
-# # interval linear programming to find the optimal decisions given those bounds
-# optimal_decisions = ILP(bounds)
-# ```
 
 # %% [code]
-import pandas as pd
 import numpy as np
-from sklearn.linear_model import LinearRegression
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
 
-total_n = 1000
-options = ["A", "B", "C", "D", "E"]
-conditions = ["condition1", "condition2", "condition3"]
+config = {"random_state": 8675309, "test_size": 0.3, "print_plots": False}
 
-df = pd.DataFrame(
-    {
-        "option": np.random.choice(options, size=total_n),
-        "condition": np.random.choice(conditions, size=total_n),
-        "satisfaction": np.random.randint(1, 11, size=total_n),
-        "cost": np.random.randint(100, 1000, size=total_n),
-    }
+df = pd.read_excel("data/DryBeanDataset/Dry_Bean_Dataset.xlsx")
+
+X = df.drop(columns=["Class"])
+y = df["Class"]
+
+# temp will be split into calibration and test sets
+X_train, X_temp, y_train, y_temp = train_test_split(
+    X, y, test_size=config["test_size"], random_state=config["random_state"]
 )
 
-
-# make satisfaction a function of option
-def satisfaction(satistfaction, option):
-    if option == "A":
-        res = satistfaction + 1
-    elif option == "B":
-        res = satistfaction + 2
-    elif option == "C":
-        res = satistfaction + 3
-    elif option == "D":
-        res = satistfaction + 4
-    elif option == "E":
-        res = satistfaction + 5
-    else:
-        res = np.nan
-    if res > 10:
-        return 10
-    else:
-        return res
-
-
-# make cost a function of option
-def cost(cost, option):
-    if option == "A":
-        return cost + 100
-    elif option == "B":
-        return cost + 200
-    elif option == "C":
-        return cost + 300
-    elif option == "D":
-        return cost + 400
-    elif option == "E":
-        return cost + 500
-    else:
-        return np.nan
-
-
-df["satisfaction"] = df.apply(
-    lambda x: satisfaction(x["satisfaction"], x["option"]), axis=1
+# split the remaining data into calibration and test sets
+X_cal, X_test, y_cal, y_test = train_test_split(
+    X_temp, y_temp, test_size=1 / 3, random_state=config["random_state"]
 )
 
-df["cost"] = df.apply(lambda x: cost(x["cost"], x["option"]), axis=1)
-
-df
+# fit a random forest model
+rf = RandomForestClassifier(random_state=config["random_state"])
+rf.fit(X_cal, y_cal)
 
 
 # %% [code]
-# fit a linear model predicting cost from all other variables
-X = df.drop(columns=["cost"])
-y = df["cost"]
-
-X = pd.get_dummies(X, columns=["option", "condition"], drop_first=True)
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
-)
-model = LinearRegression()
-model.fit(X_train, y_train)
-
-# get the decisions and costs from the model
-decisions = X_train.columns
-costs = model.coef_
-
-# make a dict mapping decisions to costs for future reference
-decision_labels_dicts = dict(zip(decisions, costs))
-print(decision_labels_dicts)
-
-# make a version where decisions are mapped to integers
-decision_costs_int = {i: cost for i, cost in enumerate(costs)}
-print(decision_costs_int)
+le = LabelEncoder()
+y_cal_enc = le.fit_transform(y_cal)
 
 
 # %% [code]
-cost_prod = np.dot(list(decision_costs_int.keys()), list(decision_costs_int.values()))
+cal_preds = rf.predict_proba(X_cal)
+cal_p_true = cal_preds[np.arange(len(y_cal_enc)), y_cal_enc]
+nc_scores = 1 - cal_p_true
+
+qhat = np.quantile(nc_scores, 0.95)
+
+print(f"Quantile estimate (qHat): {qhat:.2f}")
+
+
+# %% [code]
+# visualize the distributions of the predicted probabilities
+if config["print_plots"]:
+    sns.set(style="whitegrid")
+    plt.figure(figsize=(10, 6))
+    sns.histplot(nc_scores, bins=30, kde=True)
+    plt.axvline(qhat, color='red', linestyle='--', label=f'qHat = {qhat:.2f}')
+    plt.title("Distribution of Non-Conformity Scores")
+    plt.xlabel("Non-Conformity Score")
+    plt.ylabel("Frequency")
+    plt.legend()
+    plt.show()
+
+
+pred_sets = (1 - rf.predict_proba(X_test) <= qhat)
+
+print(pred_sets[0:10])  # Print the first 10 prediction sets
+
+
+for i, pred_set in enumerate(pred_sets[:10]):  # Limit to first 10 samples for brevity
+    # map the prediction set back to original class labels
+    pred_classes = le.inverse_transform(np.where(pred_set)[0])
+    print(f"Sample {i + 1}: Predicted Classes: {pred_classes if len(pred_classes) > 0 else 'None'}")
+

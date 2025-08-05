@@ -1,7 +1,7 @@
 [workspace]
 authors = ["thadryanjs <thadryan@protonmail.com>"]
 channels = ["conda-forge"]
-name = "TheoryProjectIdeas"
+name = "ConformalPredIndStudy"
 platforms = ["linux-64"]
 version = "0.1.0"
 
@@ -29,3 +29,4 @@ jupyter-book = ">=1.0.4.post1,<2"
 black = ">=25.1.0,<26"
 matplotlib = ">=3.10.3,<4"
 seaborn = ">=0.13.2,<0.14"
+openpyxl = ">=3.1.5,<4"

@@ -52,13 +52,17 @@ assert round(train_prop + test_prop + cal_prop) == 1.0
 
 # Split the data into train, test, and calibration sets
 df_train, df_test = train_test_split(
-    df, train_size=train_prop, stratify=df["type"],
+    df,
+    train_size=train_prop,
+    stratify=df["type"],
     random_state=random_state,
 )
 
 df_cal, df_test = train_test_split(
-    df_test, train_size=cal_prop / (test_prop + cal_prop), stratify=df_test["type"],
-    random_state=random_state
+    df_test,
+    train_size=cal_prop / (test_prop + cal_prop),
+    stratify=df_test["type"],
+    random_state=random_state,
 )
 
 print(f"Train set size: {df_train.shape[0]}")
@@ -93,7 +97,10 @@ def printer(verbose, *args, **kwargs):
     if verbose:
         print(*args, **kwargs)
 
-def generate_prediction_sets(model, X_test, label_encoder, quantile_score, verbose=True):
+
+def generate_prediction_sets(
+    model, X_test, label_encoder, quantile_score, verbose=True
+):
     test_preds_probs = model.predict_proba(X_test)
     labels = label_encoder.classes_
 
@@ -110,13 +117,22 @@ def generate_prediction_sets(model, X_test, label_encoder, quantile_score, verbo
 
         for j in sorted_indices:
             pj = pred_prob[j]
-            printer(verbose, f"\tProcessing label: {labels[j]}, Probability: {pj:.4f}, Non-conformity score: {pred_nc_scores[j]:.4f}")
+            printer(
+                verbose,
+                f"\tProcessing label: {labels[j]}, Probability: {pj:.4f}, Non-conformity score: {pred_nc_scores[j]:.4f}",
+            )
             if cum_score + pred_nc_scores[j] <= quantile_score:
                 cum_score += pred_nc_scores[j]
                 pred_set.append(labels[j])
-                printer(verbose, f"\t\tCurrent prediction set: {pred_set}, cum_score: {cum_score:.4f}")
+                printer(
+                    verbose,
+                    f"\t\tCurrent prediction set: {pred_set}, cum_score: {cum_score:.4f}",
+                )
             else:
-                printer(verbose, f"\t\tBreaking, cum_score: {cum_score:.4f} + {pred_nc_scores[j]:.4f} > {quantile_score:.4f}")
+                printer(
+                    verbose,
+                    f"\t\tBreaking, cum_score: {cum_score:.4f} + {pred_nc_scores[j]:.4f} > {quantile_score:.4f}",
+                )
                 break
 
         printer(verbose, f"\tPredicted set for sample {i}: {pred_set}")
@@ -128,10 +144,12 @@ def generate_prediction_sets(model, X_test, label_encoder, quantile_score, verbo
         # Append the prediction set for the current sample to the list
         all_prediction_sets.append(pred_set)
 
-
     return all_prediction_sets  # Return the list of prediction sets
 
-prediction_sets = generate_prediction_sets(model, X_test, label_encoder, quantile_score, verbose=False)
+
+prediction_sets = generate_prediction_sets(
+    model, X_test, label_encoder, quantile_score, verbose=False
+)
 
 # Sample 10531:
 #         Processing label: N, Probability: 0.6900, Non-conformity score: 0.3100
@@ -144,5 +162,5 @@ lens = [len(pred_set) for pred_set in prediction_sets]
 print(f"Average size of prediction sets: {np.mean(lens):.2f}")
 # get the counts of each length
 from collections import Counter
-length_counts = Counter(lens)
 
+length_counts = Counter(lens)
