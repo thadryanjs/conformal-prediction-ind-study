@@ -1,8 +1,9 @@
 # ---
 # jupyter:
 #   jupytext:
-#     cell_metadata_filter: -all
+#     cell_metadata_filter: title,-all
 #     formats: ipynb,py:percent
+#     notebook_metadata_filter: title,-widgets,-varInspector
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -12,10 +13,27 @@
 #     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
+#   title: Conformal Prediction for people in a hurry
 # ---
 
+# %% [code]
 
-# %(cell) [code]
+# %% [markdown]
+# - **Conformal Prediction (CP)** is a method for getting calibrated uncertainty estimates for machine learning models where they are not generally available, something like confidence intervals for almost any model.
+# - Surprisingly, it works for classification problems as well as regression.
+#   - The regression case produces a prediction interval, similar to a confidence interval.
+#   - The classification case produces sets of predictions that are guaranteed to contain the true class label with a certain probability.
+#
+# - CP works by estimating a "non-conformity" score for each sample and comparing that to a distribution of non-conformity (NC) scores derived from a subset of the data.
+#   - The data are split into test, train, and calibration sets.
+#   - NC scores are calculated on the calibration set, and the 1-alpha quantile of these scores (qHat) is noted.
+#   - When new data is encountered, the NC of the new data is compared to predicted probabilities for each class.
+#   - Potential outcomes are included in the final prediction set if the NC score is less than or equal to qHat.
+#   - In the regression case, qHat is derived from the residuals and used to create prediction intervals by adding and subtracting qHat from the predicted value.
+
+
+# %% [code]
+print("no")
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -24,6 +42,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.utils import shuffle
+from mapie.classification import MapieClassifier
 
 config = {
     "random_state": 8675309,
@@ -61,7 +80,7 @@ rf = RandomForestClassifier(random_state=config["random_state"])
 rf.fit(X_train, y_train)
 
 
-# %(cell) [code]
+# %% [code]
 le = LabelEncoder()
 y_cal_enc = le.fit_transform(y_cal)
 
@@ -75,7 +94,7 @@ qhat = np.quantile(nc_scores, 0.95) * (len(nc_scores) / (len(nc_scores) - 1))
 print(f"Quantile estimate (qHat): {qhat:.4f}")
 
 
-# %(cell) [code]
+# %% [code]
 # visualize the distributions of the predicted probabilities
 if config["print_plots"]:
     sns.set(style="whitegrid")
@@ -89,31 +108,53 @@ if config["print_plots"]:
     plt.show()
 
 
-# %(cell) [code]
-# Encode the true class labels for the test set
-y_test_enc = le.transform(y_test)  # Use the same encoder to transform y_test
+# %% [code]
+# Encode the true class labels - just to deal with integers/string names
+y_test_enc = le.transform(y_test)
 
-# Predict probabilities for the test set
+# predict "probabilities" for the test set
 test_preds = rf.predict_proba(X_test)
 
+
+# %% [code]
+# this gives us the estimate probability of each class being the true class
+print(test_preds[:10])
+
+
+# %% [code]
 # Create the predicted sets based on the quantile threshold
 pred_sets = 1 - test_preds <= qhat
 
+print(pred_sets[:25])
+
+
+# %% [code]
+print(pred_sets[20])
+
+
+# %% [code]
 # Check if the predicted sets contain the true class
+# Note: This is an extremely terse idiom that optimizes for speed, not clarity.
+# It replaces a nested loop checking each class for each sample against the true class
 true_class_present = pred_sets[np.arange(len(y_test_enc)), y_test_enc]
 
+true_class_present
+
+
+# %% [code]
 # Calculate the coverage rate
+# Note: np.mean True as 1 and False as 0, which is why this works.
 coverage_rate = np.mean(true_class_present)
 
 print(f"Manual Coverage rate: {coverage_rate:.2f}")
 
 
-# %(cell) [code]
-rf_mapie = MapieClassifier(estimator=rf, cv="prefit",  method="score")
+# %% [code]
+rf_mapie = MapieClassifier(estimator=rf, cv="prefit", method="score")
 
 rf_mapie.fit(X_cal, y_cal)
 
-y_pred, y_set = cp.predict(X_test, alpha=0.05)
+y_pred, y_set = rf_mapie.predict(X_test, alpha=0.05)
 mapie_coverage_rate = rf_mapie.score(X_test, y_test)
 
 print(f"MAPIE coverate rate: {mapie_coverage_rate:.2f}")

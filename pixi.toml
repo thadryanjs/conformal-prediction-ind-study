@@ -17,6 +17,24 @@ create-notebook = { args = ["scriptname", "extension", "kernel"], cmd = [
     "jupytext", "--set-kernel", "{{ kernel }}", "{{ scriptname }}.{{ extension }}"
 ] }
 
+format-code = { cmd = ["black", "*.py"] }
+
+sync-notebooks = { cmd = [
+    "jupytext", "--sync", "*.py"
+], depends-on = ["format-code"] }
+
+minimal-example = { cmd = [
+    "jupyter", "nbconvert", "--execute",
+        "00_minimal-example.ipynb",
+        "--inplace",
+        "--ExecutePreprocessor.kernel_name=python3"
+], depends-on = ["sync-notebooks"] }
+
+minimal-example-pdf = { cmd = [
+    "jupyter", "nbconvert", "--to", "pdf", "00_minimal-example.ipynb"
+], depends-on = ["minimal-example"] }
+
+
 [dependencies]
 scikit-learn = ">=1.7.0,<2"
 scipy = ">=1.16.0,<2"
