@@ -17,10 +17,11 @@
 # %% [markdown]
 # # Conformal Prediction for Regression
 #
-# # Intuition
+# ## Intuition
 # The generalization of conformal prediciton from the classification case to the regression makes becomes intuitive with with the following realization: *a residual is a non-conformity score*. The residuals of a model measure very literally how far a predction was from the expected value. Thus, the machinery of conformal prediction can be readily generalized.
 #
 # ## Example case
+# ### Setup
 # We simulate a simple regression case to illustrate this idea:
 
 
@@ -29,8 +30,6 @@ import pandas as pd
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-
-matplotlib.use("qt5agg")
 import seaborn as sns
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
@@ -118,46 +117,79 @@ y_conf_high = y_pred + qhat
 
 
 # %% [markdown]
+# ### Visualize
 # We can visualize the results intuitively:
 
 # %% [code]
+# Create the DataFrame for plotting, INCLUDING the desired feature
 df = pd.DataFrame(
     {
         "y_test": y_test,
         "y_pred": y_pred,
         "y_conf_low": y_conf_low,
         "y_conf_high": y_conf_high,
+        # Add the specific feature column from X_test to this DataFrame
+        "Feature1": X_test["Feature1"],
     }
 )
 
-# Sort the DataFrame by the true values (y_test)
-df_sorted = df.sort_values(by="y_test")
-
-# Plot the data
-fig, ax = plt.subplots(figsize=(10, 6))
-
-# Plot the scatter points
-ax.scatter(
-    df_sorted["y_test"], df_sorted["y_pred"], s=50, alpha=0.5, label="Predicted Value"
-)
-
-# Plot the shaded confidence interval
-ax.fill_between(
-    df_sorted["y_test"],
-    df_sorted["y_conf_low"],
-    df_sorted["y_conf_high"],
-    alpha=0.2,
-    label="Confidence Interval",
-)
-
-# Set labels and title
-ax.set_xlabel("True Value")
-ax.set_ylabel("Predicted Value")
-ax.set_title("Prediction with Confidence Interval")
-ax.legend()
-plt.show()
+# Sort the DataFrame by the feature for a smoother plot
+df_sorted = df.sort_values(by="Feature1")
 
 
 # %% [code]
-# close fig
-plt.close()
+# Plot the data using the pyplot interface
+plt.figure(figsize=(12, 7))
+
+# Plot the actual values as scatter points
+plt.scatter(
+    df_sorted["Feature1"],
+    df_sorted["y_test"],
+    s=50,
+    alpha=0.6,
+    label="Actual Value",
+    color="blue",
+)
+
+# Plot the predicted values as scatter points
+plt.scatter(
+    df_sorted["Feature1"],
+    df_sorted["y_pred"],
+    s=50,
+    alpha=0.6,
+    label="Predicted Value",
+    color="orange",
+)
+
+# Plot the shaded confidence interval
+plt.fill_between(
+    df_sorted["Feature1"],
+    df_sorted["y_conf_low"],
+    df_sorted["y_conf_high"],
+    alpha=0.2,
+    label="Prediction Interval",
+    color="purple",
+)
+
+# Set labels and title
+plt.xlabel("Feature 1")
+plt.ylabel("Target Value")
+plt.title("Actual and Predicted Values vs. Feature 1 with Prediction Intervals")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+
+# %% [markdown]
+# ### Coverage
+# We can now verify that we have a 95% coverage rate:
+
+# %% [code]
+# check the coverage rate
+coverage_rate = np.mean(
+    (df_sorted["y_test"] >= df_sorted["y_conf_low"])
+    & (df_sorted["y_test"] <= df_sorted["y_conf_high"])
+)
+
+print(f"Coverage rate: {coverage_rate:.2f}")

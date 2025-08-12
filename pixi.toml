@@ -38,11 +38,11 @@ regression = { cmd = [
 ], depends-on = ["sync-notebooks"] }
 
 make-pdf = { args = ["name"], cmd = [
-    "jupyter", "nbconvert", "--to", "pdf", "{{ name }}.ipynb"
+    "jupyter", "nbconvert", "{{ name }}", "--to", "pdf"
 ] }
 
 make-all-pdfs = { args = ["name"], cmd = [
-    "jupyter", "nbconvert", "--to", "pdf", "*.ipynb"
+    "jupyter", "nbconvert", "--to", "pdf"
 ] }
 
 
