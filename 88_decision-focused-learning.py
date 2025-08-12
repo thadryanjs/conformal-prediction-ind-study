@@ -14,7 +14,7 @@
 #     name: python3
 # ---
 
-
+# %%
 
 # %% [code]
 import pandas as pd
@@ -28,11 +28,15 @@ num_samples = 100
 
 # Create a DataFrame
 data = {
-    'state': [f'state_{i}' for i in range(num_samples)],
-    'action': [f'action_{np.random.randint(1, 5)}' for _ in range(num_samples)],
-    'reward': np.random.uniform(0, 10, num_samples),  # Random rewards between 0 and 10
-    'next_state': [f'state_{np.random.randint(0, num_samples)}' for _ in range(num_samples)],
-    'theta_param': np.random.uniform(-1, 1, num_samples)  # Random parameters for dynamics model
+    "state": [f"state_{i}" for i in range(num_samples)],
+    "action": [f"action_{np.random.randint(1, 5)}" for _ in range(num_samples)],
+    "reward": np.random.uniform(0, 10, num_samples),  # Random rewards between 0 and 10
+    "next_state": [
+        f"state_{np.random.randint(0, num_samples)}" for _ in range(num_samples)
+    ],
+    "theta_param": np.random.uniform(
+        -1, 1, num_samples
+    ),  # Random parameters for dynamics model
 }
 
 df = pd.DataFrame(data)
@@ -41,18 +45,20 @@ df = pd.DataFrame(data)
 print(df.head())
 
 
-
 # %% [code]
 import numpy as np
+
 
 def softmax(theta):
     """Compute the softmax probabilities for the given parameters theta."""
     exp_theta = np.exp(theta - np.max(theta))
     return exp_theta / np.sum(exp_theta)
 
+
 def action_probabilities(state, theta):
     """Compute the action probabilities for a given state using the softmax policy."""
     return softmax(theta)
+
 
 theta_example = np.array([0.2, 2.0, 0.5])
 
