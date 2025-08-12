@@ -16,8 +16,6 @@
 #   title: Conformal Prediction for people in a hurry
 # ---
 
-# %% [code]
-
 # %% [markdown]
 # ## Conformal Prediction in one sentence
 #
@@ -220,7 +218,7 @@ print(f"MAPIE coverate rate: {mapie_coverage_rate:.2f}")
 
 
 # %% [markdown]
-# There are probably subtle implementation details here that explain the slight difference, but we've show that we have a reasonable demonstration.
+# There are probably subtle implementation details here that explain the slight difference, but we've shown that we have a reasonable demonstration.
 #
 # # Further Reading
 #
