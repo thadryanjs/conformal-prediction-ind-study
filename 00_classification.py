@@ -13,13 +13,15 @@
 #     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
-#   title: Conformal Prediction for people in a hurry
+#   title: Introducing Conformal Prediction with Classification
 # ---
 
 # %% [markdown]
+# # Conformal Prediction for Classification
+#
 # ## Conformal Prediction in one sentence
 #
-# Conformal Prediciton allows users to create rigorous estimates of uncertainty similar to confidence intervals regardless of the machine learning model used by applying a non-conformity function to a calibration set of the data an analyzing new data based on where that fall in the quantiles of that non-conformity score.
+# Conformal Prediction allows users to create rigorous estimates of uncertainty similar to confidence intervals regardless of the machine learning model used by applying a non-conformity function to a calibration set of the data an analyzing new data based on where that fall in the quantile of that non-conformity score.
 #
 # ## A more reasonable summary
 #
@@ -30,12 +32,13 @@
 #
 # - CP works by estimating a "non-conformity" score for each sample and comparing that to a distribution of non-conformity (NC) scores derived from a subset of the data.
 #   - The data are split into test, train, and calibration sets.
-#   - NC scores are calculated on the calibration set, and the 1-alpha quantile of these scores (qHat) is noted.
-#   - When new data is encountered, the NC of the new data is compared to predicted probabilities for each class.
-#   - Potential outcomes are included in the final prediction set if the NC score is less than or equal to qHat.
-#   - In the regression case, qHat is derived from the residuals and used to create prediction intervals by adding and subtracting qHat from the predicted value.
+#   - NC scores are calculated on the calibration set, and the 1-alpha quantile of these scores ($\hat q$) is noted.
 #
-# Essentially, give a new prediction, we want to be able to say "How weird is this?" and select quantiles of acceptable weirdness.
+#   - When new data is encountered, the NC of the new data is compared to predicted probabilities for each class.
+#   - Potential outcomes are included in the final prediction set if the NC score is less than or equal to $\hat q$.
+#   - In the regression case, $\hat q$ is derived from the residuals and used to create prediction intervals by adding and subtracting $\hat q$ from the predicted value.
+#
+# Essentially, given a new prediction, we want to be able to say "How weird is this?" and select observations from certain quantiles of acceptable weirdness.
 #
 # ## An example in Python
 # The example below uses the UCI Beans dataset. We will fit a random forest to classify beans by variety. The code is included for the curious. We visualize the dataset:
@@ -65,7 +68,7 @@ df.head()
 
 
 # %% [markdown]
-# We need to set aside 1000 rows of data in order to estimate the distribution of the non-conformity scores from which we will compute $\hat q$. This is the sample size reccomended by the creators basd on emperical studies.
+# We need to set aside 1000 rows of data in order to estimate the distribution of the non-conformity scores from which we will compute $\hat q$. This is the sample size recommended by the creators based on empirical studies.
 
 
 # %% [code]
@@ -99,7 +102,7 @@ rf.fit(X_train, y_train)
 
 
 # %% [markdown]
-# Now that we have a model we can see the predictions is gives as so we can characterize the distribution of the non-conformity scores, ie, the distribution of "weirdness". For our weirdness score we will simply use $1-p(true)$. This is a common non-nonformity score.
+# Now that we have a model we can see the predictions is gives as so we can characterize the distribution of the non-conformity scores, ie, the distribution of "weirdness". For our weirdness score we will simply use $1-p(true)$. This is a common non-conformity score.
 
 
 # %% [code]
@@ -111,7 +114,7 @@ y_cal_enc = le.fit_transform(y_cal)
 cal_preds = rf.predict_proba(X_cal)
 
 # get the predicted probabilities for the true class
-# Note: this is an extreme terse numpy idiom, but it just extracts the predicted probabilities for the true class. The arange is just setting up an index of 1 to the lenge of the array
+# Note: this is an extreme terse numpy idiom, but it just extracts the predicted probabilities for the true class. The arange is just setting up an index of 1 to the length of the array
 cal_p_true = cal_preds[np.arange(len(y_cal_enc)), y_cal_enc]  # pyright: ignore
 
 # the famed non-conformity score
@@ -158,7 +161,7 @@ print(test_preds[:10])
 
 
 # %% [markdown]
-# Now we build the sets by comparing the predicted probabilities to the quantile threshold and taking those that aren't rule out by their "weirdness", thus pushing our sets below the desired quantile. We execute this and instpect:
+# Now we build the sets by comparing the predicted probabilities to the quantile threshold and taking those that aren't rule out by their "weirdness", thus pushing our sets below the desired quantile. We execute this and inspect:
 
 
 # %% [code]
@@ -170,7 +173,7 @@ print(pred_sets[:25])
 
 
 # %% [markdown]
-# Note that some of these contain more than one predicted class. This is where the theory of conformal prediction maps satisfyingly to intuition, the more uncertainty in the model, the bigger the set we must take to keep the coverage we want. As in the case with sensitivity-specifity tradeoffs, we see the extreme endpoint gives us 100% coverage at the expense of being at all informative: a classifier that predicts "no" for everything never makes a false positive. The analogous phenomenon in conformal prediction is predicting every new observation must be in the set of all possible labels. We can see that, indeed, some of our predictions have more than one possible outcome:
+# Note that some of these contain more than one predicted class. This is where the theory of conformal prediction maps satisfyingly to intuition, the more uncertainty in the model, the bigger the set we must take to keep the coverage we want. As in the case with sensitivity-specificity trade offs, we see the extreme endpoint gives us 100% coverage at the expense of being at all informative: a classifier that predicts "no" for everything never makes a false positive. The analogous phenomenon in conformal prediction is predicting every new observation must be in the set of all possible labels. We can see that, indeed, some of our predictions have more than one possible outcome:
 
 
 # %% [code]
@@ -223,4 +226,5 @@ print(f"MAPIE coverate rate: {mapie_coverage_rate:.2f}")
 # # Further Reading
 #
 # - [This introductory blog post](https://mindfulmodeler.substack.com/p/week-1-getting-started-with-conformal)
+#
 # - [This introductory paper](https://arxiv.org/abs/2107.07511)

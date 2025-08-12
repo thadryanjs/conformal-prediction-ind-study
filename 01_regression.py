@@ -1,8 +1,8 @@
 # ---
 # jupyter:
 #   jupytext:
-#     cell_metadata_filter: title,-all
 #     formats: ipynb,py:percent
+#     notebook_metadata_filter: title,-widgets,-varInspector
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -12,13 +12,14 @@
 #     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
+#   title: Conformal Prediction in Regression
 # ---
 
 # %% [markdown]
 # # Conformal Prediction for Regression
 #
 # ## Intuition
-# The generalization of conformal prediciton from the classification case to the regression makes becomes intuitive with with the following realization: *a residual is a non-conformity score*. The residuals of a model measure very literally how far a predction was from the expected value. Thus, the machinery of conformal prediction can be readily generalized.
+# The generalization of conformal prediction to the regression makes intuitive with with the following realization: **a residual is a non-conformity score**. The residuals of a model measure very literally how far a prediction was from the expected value. Thus, the machinery of conformal prediction can be readily generalized.
 #
 # ## Example case
 # ### Setup
@@ -58,7 +59,7 @@ X[:, 2] = np.cos(X[:, 2])
 X[:, 3] = np.sin(X[:, 3])
 X[:, 4] = np.cos(X[:, 4])
 
-# It's a litle easer to work with dataframes for this
+# It's a little easier to work with dataframes for this
 names = ["Feature" + str(i) for i in range(1, 6)]
 df = pd.DataFrame(X, columns=names)
 df["Target"] = y
@@ -94,7 +95,7 @@ rf.fit(X_train, y_train)
 residuals = np.abs(rf.predict(X_test) - y_test)
 
 # %% [markdown]
-# # Now that we have our residuals, we can get the quantile estimate as before:
+# Now that we have our residuals, we can get the quantile estimate as before:
 
 # %% [code]
 
@@ -117,7 +118,7 @@ y_conf_high = y_pred + qhat
 
 
 # %% [markdown]
-# ### Visualize
+# ### Visualization
 # We can visualize the results intuitively:
 
 # %% [code]

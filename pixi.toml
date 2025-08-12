@@ -41,8 +41,11 @@ make-pdf = { args = ["name"], cmd = [
     "jupyter", "nbconvert", "{{ name }}", "--to", "pdf"
 ] }
 
-make-all-pdfs = { args = ["name"], cmd = [
-    "jupyter", "nbconvert", "--to", "pdf"
+full-build = { cmd = [
+    "pixi", "run", "classification",
+    "&&", "pixi", "run", "regression",
+    "&&", "pixi", "run", "make-pdf", "00_classification",
+    "&&", "pixi", "run", "make-pdf", "01_regression"
 ] }
 
 
