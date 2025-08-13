@@ -66,23 +66,19 @@ k = 100
 
 
 # %% [code]
-def soft_bellman_operator(transition_probs, rewards, states, actions, gamma):
+def soft_bellman(transition_probs, rewards, states, actions, gamma):
     values = {state: 0 for state in states}
-
-    for state in states:
-        action_values = {action: 0 for action in actions}
-
-        for action in actions:
-            for next_state in transition_probs[state][action]:
-                action_values[action] += transition_probs[state][action][next_state] * (
-                    rewards[state][action] + gamma * values[next_state]
+    for s in states:
+        action_values = {a: 0 for a in actions}
+        for a in actions:
+            for next_s in transition_probs[s][a]:
+                action_values[a] += transition_probs[s][a][next_s] * (
+                    rewards[s][a] + gamma * values[next_s]
                 )
-
-        values[state] = np.log(np.sum(np.exp(list(action_values.values()))))
-
+        values[s] = np.log(np.sum(np.exp(list(action_values.values()))))
     return values
 
-values = soft_bellman_operator(transition_probs, rewards, states, actions, gamma)
+values = soft_bellman(transition_probs, rewards, states, actions, gamma)
 
 
 # %% [code]
@@ -109,15 +105,26 @@ repeat
     until the maximum number of interactions is reached
 """
 
+# the initial q-table
+q_table = {s: {a: 0 for a in actions} for s in states}
+set.seed(8675309)
+
 # Algorithm 1: Model Based RL with OMD  Input:
 # Initial parameters w, θ, empty replay buffer D.
+initial_s =
 # repeat
-for ir in range(1, max_iterations):
+d = []
+for ir in range(0, max_iterations):
     # Set s to be the current state.
+    if ir == 0:
+        s = np.random.choice(states)
+    else:
+        s = s_prime
     # Sample an action a using softmax over Qw(s, a).
+
     # Apply a to get r = r(s, a), s′ ∼ p(s′|s, a).
     # Append (s, a, s′, r) to buffer D.
-    # params = ()
+    d.append((s, a, s_prime, r))
     pass
     # for i = 1 to K do
     # "We make K steps of an optimization method to approximate w∗ = φ(θ) where K is
@@ -125,6 +132,7 @@ for ir in range(1, max_iterations):
     for ik in range(1, k):
         # Sample (s, a) from buffer D.
         # Apply θ to get r = rθ(s, a), s′ ∼ pθ(s′|s, a).
+        q = soft_bellman(transition_probs, rewards, states, actions, gamma)
         # Update Qw parameters w to minimize L(θ, w).
         pass
 
