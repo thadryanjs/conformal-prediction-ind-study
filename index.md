@@ -37,3 +37,7 @@ $$
 ...where $r^{\prime}$ is the reduction in severity of the illness
 
 We propose fitting a conformalized logistic regression model to explain readmission in terms of treatment from which the probabilities can be derived. This will enable an MDP approach to minimize
+
+
+
+
