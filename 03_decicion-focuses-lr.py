@@ -23,38 +23,38 @@ states = [0, 1]
 actions = [0, 1]
 
 transition_probs = {
-        # From State 0
-        0: {
-             # p(S'=0 | S=0, A=0) and p(S'=1 | S=0, A=0)
-            0: {0: 0.7, 1: 0.3},
-            # p(S'=0 | S=0, A=1) and p(S'=1 | S=0, A=1)
-            1: {0: 0.2, 1: 0.8}
-        },
-        # From State 1
-        1: {
-            # p(S'=0 | S=1, A=0) and p(S'=1 | S=1, A=0)
-            0: {0: 0.99, 1: 0.01},
-            # p(S'=0 | S=1, A=1) and p(S'=1 | S=1, A=1)
-            1: {0: 0.99, 1: 0.01}
-        }
-    }
+    # From State 0
+    0: {
+        # p(S'=0 | S=0, A=0) and p(S'=1 | S=0, A=0)
+        0: {0: 0.7, 1: 0.3},
+        # p(S'=0 | S=0, A=1) and p(S'=1 | S=0, A=1)
+        1: {0: 0.2, 1: 0.8},
+    },
+    # From State 1
+    1: {
+        # p(S'=0 | S=1, A=0) and p(S'=1 | S=1, A=0)
+        0: {0: 0.99, 1: 0.01},
+        # p(S'=0 | S=1, A=1) and p(S'=1 | S=1, A=1)
+        1: {0: 0.99, 1: 0.01},
+    },
+}
 
 rewards = {
-        # From State 0
-        0: {
-            # r(S=0, A=0)
-            0: -0.45,
-            # r(S=0, A=1)
-            1: 0.50
-        },
-        # From State 1
-        1: {
-            # r(S=1, A=0)
-            0: -0.10,
-            # r(S=1, A=1)
-            1: 0.50
-        }
-    }
+    # From State 0
+    0: {
+        # r(S=0, A=0)
+        0: -0.45,
+        # r(S=0, A=1)
+        1: 0.50,
+    },
+    # From State 1
+    1: {
+        # r(S=1, A=0)
+        0: -0.10,
+        # r(S=1, A=1)
+        1: 0.50,
+    },
+}
 
 
 # Discount factor
@@ -75,6 +75,7 @@ def soft_bellman(transition_probs, rewards, states, actions, gamma):
                 )
         values[s] = np.log(np.sum(np.exp(list(action_values.values()))))
     return values
+
 
 values = soft_bellman(transition_probs, rewards, states, actions, gamma)
 
@@ -117,6 +118,7 @@ def get_softmax_policies(state, actions, q_table):
         results[s] = state_policies
     return results
 
+
 test_policies = get_softmax_policies(states, actions, q_table)
 
 # print neatly to inspect and confirm they add up to 1
@@ -129,43 +131,43 @@ for p in test_policies:
     print(f"\tTotal: {total}")
 
 
-
 # %% [code]
 # set a seeed
 np.random.seed(8675309)
 # q-table with initial small random values
 q_table = {s: {a: np.random.rand() for a in actions} for s in states}
 
-# "Algorithm 1: Model Based RL with OMD  Input:"
-# "Initial parameters w, θ, empty replay buffer D."
-# "repeat"
+## "Algorithm 1: Model Based RL with OMD  Input:"
+## "Initial parameters w, θ, empty replay buffer D."
+## "repeat"
 d = {}
 for ir in range(0, max_iterations):
-    # "Set s to be the current state."
+    ## "Set s to be the current state."
     if ir == 0:
         s = np.random.choice(states)
     else:
         s = s_prime
-    # "Sample an action a using softmax over Qw(s, a)."
+    ## "Sample an action a using softmax over Qw(s, a)."
     action_probs = get_softmax_policies(s, actions, q_table)
     current_state_policies = action_probs[s]
     a = np.random.choice(actions, p=list(current_state_policies.values()))
-    # "Apply a to get r = r(s, a), s′ ∼ p(s′|s, a)."
+    ## "Apply a to get r = r(s, a), s′ ∼ p(s′|s, a)."
     # The reward part
     r = rewards[s][a]
     # the s' part
     current_trans_probs = transition_probs[s][a]
     potential_next_states = list(current_transition_probs.keys())
-    s_prime = np.random.choice(potential_next_states, p=list(current_trans_probs.values()))
-    # Append (s, a, s′, r) to buffer D.
+    s_prime = np.random.choice(
+        potential_next_states, p=list(current_trans_probs.values())
+    )
+    # "Append (s, a, s′, r) to buffer D."
     d[ir] = {"s": s, "a": a, "r": r, "s_prime": s_prime}
-    # for i = 1 to K do
-    # "We make K steps of an optimization method to approximate w∗ = φ(θ) where K is
-    # a hyperparameter and reuse the weights from the previous outer loop iterations."
+    ## for i = 1 to K do
+    ## "We make K steps of an optimization method to approximate w∗ = φ(θ) where K is
+    ## a hyperparameter and reuse the weights from the previous outer loop iterations."
     for ik in range(1, k):
-        # Sample (s, a) from buffer D.
-        # Apply θ to get r = rθ(s, a), s′ ∼ pθ(s′|s, a).
+        ## "Sample (s, a) from buffer D."
+        ## "Apply θ to get r = rθ(s, a), s′ ∼ pθ(s′|s, a)."
         q = soft_bellman(transition_probs, rewards, states, actions, gamma)
-        # Update Qw parameters w to minimize L(θ, w).
+        ## "Update Qw parameters w to minimize L(θ, w)."
         pass
-

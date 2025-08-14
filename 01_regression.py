@@ -194,5 +194,3 @@ coverage_rate = np.mean(
 )
 
 print(f"Coverage rate: {coverage_rate:.2f}")
-
-
