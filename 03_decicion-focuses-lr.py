@@ -22,8 +22,6 @@ states = [0, 1]
 
 actions = [0, 1]
 
-values = {0: 0, 1: 0}
-
 transition_probs = {
         # From State 0
         0: {
@@ -105,27 +103,62 @@ repeat
     until the maximum number of interactions is reached
 """
 
-# the initial q-table
-q_table = {s: {a: 0 for a in actions} for s in states}
-set.seed(8675309)
 
-# Algorithm 1: Model Based RL with OMD  Input:
-# Initial parameters w, θ, empty replay buffer D.
-initial_s =
-# repeat
-d = []
+# %% [code]
+# πQ(a|s) = expQ(s, a) / sum(expQ(s, a'))
+def get_softmax_policies(state, actions, q_table):
+    results = {}
+    for s in states:
+        state_policies = {}
+        for a in actions:
+            numerator = np.exp(q_table[s][a])
+            denominator = np.sum([np.exp(q_table[s][a]) for a in actions])
+            state_policies[a] = numerator / denominator
+        results[s] = state_policies
+    return results
+
+test_policies = get_softmax_policies(states, actions, q_table)
+
+# print neatly to inspect and confirm they add up to 1
+for p in test_policies:
+    print(f"State: {p}")
+    total = 0
+    for a in test_policies[p]:
+        print(f"\taction {a}: {test_policies[p][a]}")
+        total += test_policies[p][a]
+    print(f"\tTotal: {total}")
+
+
+
+# %% [code]
+# set a seeed
+np.random.seed(8675309)
+# q-table with initial small random values
+q_table = {s: {a: np.random.rand() for a in actions} for s in states}
+
+# "Algorithm 1: Model Based RL with OMD  Input:"
+# "Initial parameters w, θ, empty replay buffer D."
+# "repeat"
+d = {}
 for ir in range(0, max_iterations):
-    # Set s to be the current state.
+    # "Set s to be the current state."
     if ir == 0:
         s = np.random.choice(states)
     else:
         s = s_prime
-    # Sample an action a using softmax over Qw(s, a).
-
-    # Apply a to get r = r(s, a), s′ ∼ p(s′|s, a).
+    # "Sample an action a using softmax over Qw(s, a)."
+    action_probs = get_softmax_policies(s, actions, q_table)
+    current_state_policies = action_probs[s]
+    a = np.random.choice(actions, p=list(current_state_policies.values()))
+    # "Apply a to get r = r(s, a), s′ ∼ p(s′|s, a)."
+    # The reward part
+    r = rewards[s][a]
+    # the s' part
+    current_trans_probs = transition_probs[s][a]
+    potential_next_states = list(current_transition_probs.keys())
+    s_prime = np.random.choice(potential_next_states, p=list(current_trans_probs.values()))
     # Append (s, a, s′, r) to buffer D.
-    d.append((s, a, s_prime, r))
-    pass
+    d[ir] = {"s": s, "a": a, "r": r, "s_prime": s_prime}
     # for i = 1 to K do
     # "We make K steps of an optimization method to approximate w∗ = φ(θ) where K is
     # a hyperparameter and reuse the weights from the previous outer loop iterations."
@@ -135,5 +168,4 @@ for ir in range(0, max_iterations):
         q = soft_bellman(transition_probs, rewards, states, actions, gamma)
         # Update Qw parameters w to minimize L(θ, w).
         pass
-
 
