@@ -64,23 +64,6 @@ k = 100
 
 
 # %% [code]
-def soft_bellman(transition_probs, rewards, states, actions, gamma):
-    values = {state: 0 for state in states}
-    for s in states:
-        action_values = {a: 0 for a in actions}
-        for a in actions:
-            for next_s in transition_probs[s][a]:
-                action_values[a] += transition_probs[s][a][next_s] * (
-                    rewards[s][a] + gamma * values[next_s]
-                )
-        values[s] = np.log(np.sum(np.exp(list(action_values.values()))))
-    return values
-
-
-values = soft_bellman(transition_probs, rewards, states, actions, gamma)
-
-
-# %% [code]
 # the actual algo
 """
 NotebookLM
@@ -103,7 +86,6 @@ repeat
     Update model parameters θ according to (14).
     until the maximum number of interactions is reached
 """
-
 
 # %% [code]
 # πQ(a|s) = expQ(s, a) / sum(expQ(s, a'))
@@ -131,6 +113,25 @@ for p in test_policies:
         print(f"\taction {a}: {test_policies[p][a]}")
         total += test_policies[p][a]
     print(f"\tTotal: {total}")
+
+
+# %% [code]
+# BθQ(s, a) = rθ(s, a) + γEpθ(s′|s,a) log ∑ a′ expQ(s′, a′)
+def soft_bellman(s, a, transition_probs, rewards, states, actions, q_table, gamma):
+    r_theta = rewards[s][a]
+    total = 0
+    # for each possible next state...
+    for s_prime in states:
+        potential_next_s = []
+        # ...for each action it could lead to
+        for a_prime in actions:  # Iterate over all actions
+            # get the value
+            potential_next_s.append(q_table[s_prime][a_prime])
+        # to the log-sum-exp
+        next_soft_v = np.log(np.sum(np.exp(potential_next_s)))
+        # account for the probability and add it to the total
+        total += transition_probs[s][a][s_prime] * next_soft_v
+    return r_theta + gamma * total
 
 
 # %% [code]
@@ -191,8 +192,9 @@ for ir in range(0, max_iterations):
         dr = rewards_theta[ds][da]
         ## "Update Qw parameters w to minimize L(θ, w)."
         ## "BθQ(s, a) = rθ(s, a) + γEpθ(s′|s,a) log ∑ a′ expQ(s′, a′)"
-        q_theta = soft_bellman(probs_theta, rewards_theta, states, actions, gamma)
-        d_bellman = q_theta[da]
-
+        q_theta = soft_bellman(
+            ds, da, transition_probs, rewards_theta, states, actions, q_table, gamma
+            )
+        q_table[ds][da] = q_theta
+    # outer loop
     # Update model parameters θ according to (14).
-
