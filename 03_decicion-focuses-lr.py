@@ -59,7 +59,7 @@ rewards = {
 
 # Discount factor
 gamma = 0.9
-max_iterations = 1000
+max_iterations = 100
 k = 100
 
 
@@ -186,11 +186,12 @@ for ir in range(0, max_iterations):
         d_entry = d[d_index]
         ds = d_entry["s"]
         da = d_entry["a"]
+        dq = q_table[ds][da]
         ## "Apply θ to get r = rθ(s, a), s′ ∼ pθ(s′|s, a)."
+        dr = rewards_theta[ds][da]
+        ## "Update Qw parameters w to minimize L(θ, w)."
+        # AI: q_table[ds][da] = dq + alpha * (dr + gamma * q_table[ds_prime][a] - dq)
         q_theta = soft_bellman(probs_theta, rewards_theta, states, actions, gamma)
-    ## "Update Qw parameters w to minimize L(θ, w)."
-    # make q match q_theta
-    # q_table = q_theta
-
-
+        d_bellman = q_theta[da]
+    # Update model parameters θ according to (14).
 
