@@ -190,8 +190,9 @@ for ir in range(0, max_iterations):
         ## "Apply θ to get r = rθ(s, a), s′ ∼ pθ(s′|s, a)."
         dr = rewards_theta[ds][da]
         ## "Update Qw parameters w to minimize L(θ, w)."
-        # AI: q_table[ds][da] = dq + alpha * (dr + gamma * q_table[ds_prime][a] - dq)
+        ## "BθQ(s, a) = rθ(s, a) + γEpθ(s′|s,a) log ∑ a′ expQ(s′, a′)"
         q_theta = soft_bellman(probs_theta, rewards_theta, states, actions, gamma)
         d_bellman = q_theta[da]
+
     # Update model parameters θ according to (14).
 
