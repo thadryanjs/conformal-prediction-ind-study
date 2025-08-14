@@ -15,7 +15,7 @@
 # ---
 
 
-# %(cell) [code]
+# %% [code]
 import numpy as np
 
 states = [0, 1]
@@ -63,7 +63,7 @@ max_iterations = 100
 k = 100
 learning_rate = 0.1
 
-# %(cell) [code]
+# %% [code]
 # the actual algo
 """
 NotebookLM
@@ -87,7 +87,7 @@ repeat
     until the maximum number of interactions is reached
 """
 
-# %(cell) [code]
+# %% [code]
 # πQ(a|s) = expQ(s, a) / sum(expQ(s, a'))
 def get_softmax_policies(state, actions, q_table):
     results = {}
@@ -115,7 +115,7 @@ for p in test_policies:
     print(f"\tTotal: {total}")
 
 
-# %(cell) [code]
+# %% [code]
 # BθQ(s, a) = rθ(s, a) + γEpθ(s′|s,a) log ∑ a′ expQ(s′, a′)
 def soft_bellman(s, a, probs, rewards, states, actions, q_table, gamma):
     r_theta = rewards[s][a]
@@ -134,7 +134,7 @@ def soft_bellman(s, a, probs, rewards, states, actions, q_table, gamma):
     return r_theta + gamma * total
 
 
-# %(cell) [code]
+# %% [code]
 # set a seeed
 np.random.seed(8675309)
 
@@ -151,8 +151,14 @@ probs_theta = {
     for s in states
 }
 
+def update_q_table():
+    pass
 
-# %(cell) [code]
+def update_theta():
+    pass
+
+
+# %% [code]
 ## "Algorithm 1: Model Based RL with OMD  Input:"
 ## "Initial parameters w, θ, empty replay buffer D."
 ## "repeat"
@@ -187,7 +193,6 @@ for ir in range(0, max_iterations):
         d_entry = d[d_index]
         ds = d_entry["s"]
         da = d_entry["a"]
-        ## dq = q_table[ds][da]
         ## "Apply θ to get r = rθ(s, a), s′ ∼ pθ(s′|s, a)."
         dr = rewards_theta[ds][da]
         ## "Update Qw parameters w to minimize L(θ, w)."
@@ -195,23 +200,13 @@ for ir in range(0, max_iterations):
         q_bellman = soft_bellman(
             ds, da, probs_theta, rewards_theta, states, actions, q_table, gamma
             )
-        # q_table[ds][da] = dq - learning_rate * (q_bellman - dq)
-        # x = dq - learning_rate * (q_bellman - dq)
-        # if np.isnan(x):
-        #     print("NaN")
-        # q_table[ds][da] = x
+        # TODO: implement q table update
+        update_q_table()
 
-    # outer loop
-    # how to I get an update for p and r out of this?
-    # I am assuming you do this for each param separately? It's completely unaddressed
-    # in the paper so far as I can tell
+    # back to outer loop
+
     ## "Update model parameters θ according to (14)."
-    # this is a placeholder until I get some clarity
-    """
-    r_theta_prime = rewards_theta[s][a]
-    rewards_theta[s][a] = r_theta_prime - learning_rate * (r - r_theta_prime)
-    p_theta_prime = probs_theta[s][a][s_prime]
-    probs_theta[s][a][s_prime] = p_theta_prime - learning_rate * (
-        probs[s][a][s_prime] - p_theta_prime
-    )
-    """
+    # TODO: implement
+    # how to I get an update for p and r out of this?
+    # I am assuming you do this for each param separately? Very vague in the paper.
+    update_theta()
