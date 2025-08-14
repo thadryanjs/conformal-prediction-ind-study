@@ -15,22 +15,22 @@
 # ---
 
 
-# %% [code]
+# %(cell) [code]
 import numpy as np
 
 states = [0, 1]
 
 actions = [0, 1]
 
-transition_probs = {
-    # From State 0
+probs = {
+    # From state 0
     0: {
         # p(S'=0 | S=0, A=0) and p(S'=1 | S=0, A=0)
         0: {0: 0.7, 1: 0.3},
         # p(S'=0 | S=0, A=1) and p(S'=1 | S=0, A=1)
         1: {0: 0.2, 1: 0.8},
     },
-    # From State 1
+    # From state 1
     1: {
         # p(S'=0 | S=1, A=0) and p(S'=1 | S=1, A=0)
         0: {0: 0.99, 1: 0.01},
@@ -40,14 +40,14 @@ transition_probs = {
 }
 
 rewards = {
-    # From State 0
+    # From state 0
     0: {
         # r(S=0, A=0)
         0: -0.45,
         # r(S=0, A=1)
         1: 0.50,
     },
-    # From State 1
+    # From state 1
     1: {
         # r(S=1, A=0)
         0: -0.10,
@@ -61,9 +61,9 @@ rewards = {
 gamma = 0.9
 max_iterations = 100
 k = 100
+learning_rate = 0.1
 
-
-# %% [code]
+# %(cell) [code]
 # the actual algo
 """
 NotebookLM
@@ -87,7 +87,7 @@ repeat
     until the maximum number of interactions is reached
 """
 
-# %% [code]
+# %(cell) [code]
 # πQ(a|s) = expQ(s, a) / sum(expQ(s, a'))
 def get_softmax_policies(state, actions, q_table):
     results = {}
@@ -115,9 +115,9 @@ for p in test_policies:
     print(f"\tTotal: {total}")
 
 
-# %% [code]
+# %(cell) [code]
 # BθQ(s, a) = rθ(s, a) + γEpθ(s′|s,a) log ∑ a′ expQ(s′, a′)
-def soft_bellman(s, a, transition_probs, rewards, states, actions, q_table, gamma):
+def soft_bellman(s, a, probs, rewards, states, actions, q_table, gamma):
     r_theta = rewards[s][a]
     total = 0
     # for each possible next state...
@@ -130,11 +130,11 @@ def soft_bellman(s, a, transition_probs, rewards, states, actions, q_table, gamm
         # to the log-sum-exp
         next_soft_v = np.log(np.sum(np.exp(potential_next_s)))
         # account for the probability and add it to the total
-        total += transition_probs[s][a][s_prime] * next_soft_v
+        total += probs[s][a][s_prime] * next_soft_v
     return r_theta + gamma * total
 
 
-# %% [code]
+# %(cell) [code]
 # set a seeed
 np.random.seed(8675309)
 
@@ -145,14 +145,14 @@ np.random.seed(8675309)
 q_table = {s: {a: np.random.rand() for a in actions} for s in states}
 # rewards_theta is a randomized version of the rewards (same dimensions)
 rewards_theta = {s: {a: np.random.rand() for a in actions} for s in states}
-# probs_theta is a randomized version of the transition_probs (same dimensions)
+# probs_theta is a randomized version of the probs (same dimensions)
 probs_theta = {
     s: {a: {s_prime: np.random.rand() for s_prime in states} for a in actions}
     for s in states
 }
 
 
-# %% [code]
+# %(cell) [code]
 ## "Algorithm 1: Model Based RL with OMD  Input:"
 ## "Initial parameters w, θ, empty replay buffer D."
 ## "repeat"
@@ -171,7 +171,7 @@ for ir in range(0, max_iterations):
     # The reward part
     r = rewards[s][a]
     # the s' part
-    current_trans_probs = transition_probs[s][a]
+    current_trans_probs = probs[s][a]
     potential_next_states = list(current_trans_probs.keys())
     s_prime = np.random.choice(
         potential_next_states, p=list(current_trans_probs.values())
@@ -187,14 +187,31 @@ for ir in range(0, max_iterations):
         d_entry = d[d_index]
         ds = d_entry["s"]
         da = d_entry["a"]
-        dq = q_table[ds][da]
+        ## dq = q_table[ds][da]
         ## "Apply θ to get r = rθ(s, a), s′ ∼ pθ(s′|s, a)."
         dr = rewards_theta[ds][da]
         ## "Update Qw parameters w to minimize L(θ, w)."
         ## "BθQ(s, a) = rθ(s, a) + γEpθ(s′|s,a) log ∑ a′ expQ(s′, a′)"
-        q_theta = soft_bellman(
-            ds, da, transition_probs, rewards_theta, states, actions, q_table, gamma
+        q_bellman = soft_bellman(
+            ds, da, probs_theta, rewards_theta, states, actions, q_table, gamma
             )
-        q_table[ds][da] = q_theta
+        # q_table[ds][da] = dq - learning_rate * (q_bellman - dq)
+        # x = dq - learning_rate * (q_bellman - dq)
+        # if np.isnan(x):
+        #     print("NaN")
+        # q_table[ds][da] = x
+
     # outer loop
-    # Update model parameters θ according to (14).
+    # how to I get an update for p and r out of this?
+    # I am assuming you do this for each param separately? It's completely unaddressed
+    # in the paper so far as I can tell
+    ## "Update model parameters θ according to (14)."
+    # this is a placeholder until I get some clarity
+    """
+    r_theta_prime = rewards_theta[s][a]
+    rewards_theta[s][a] = r_theta_prime - learning_rate * (r - r_theta_prime)
+    p_theta_prime = probs_theta[s][a][s_prime]
+    probs_theta[s][a][s_prime] = p_theta_prime - learning_rate * (
+        probs[s][a][s_prime] - p_theta_prime
+    )
+    """
