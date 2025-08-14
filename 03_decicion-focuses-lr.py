@@ -119,6 +119,8 @@ def get_softmax_policies(state, actions, q_table):
     return results
 
 
+# q-table with initial small random values (to test)
+q_table = {s: {a: np.random.rand() for a in actions} for s in states}
 test_policies = get_softmax_policies(states, actions, q_table)
 
 # print neatly to inspect and confirm they add up to 1
@@ -134,9 +136,22 @@ for p in test_policies:
 # %% [code]
 # set a seeed
 np.random.seed(8675309)
+
+# we need paramters for the inner loop, starting with small random values
+# these will be updated in the inner loop
+
 # q-table with initial small random values
 q_table = {s: {a: np.random.rand() for a in actions} for s in states}
+# rewards_theta is a randomized version of the rewards (same dimensions)
+rewards_theta = {s: {a: np.random.rand() for a in actions} for s in states}
+# probs_theta is a randomized version of the transition_probs (same dimensions)
+probs_theta = {
+    s: {a: {s_prime: np.random.rand() for s_prime in states} for a in actions}
+    for s in states
+}
 
+
+# %% [code]
 ## "Algorithm 1: Model Based RL with OMD  Input:"
 ## "Initial parameters w, θ, empty replay buffer D."
 ## "repeat"
@@ -156,7 +171,7 @@ for ir in range(0, max_iterations):
     r = rewards[s][a]
     # the s' part
     current_trans_probs = transition_probs[s][a]
-    potential_next_states = list(current_transition_probs.keys())
+    potential_next_states = list(current_trans_probs.keys())
     s_prime = np.random.choice(
         potential_next_states, p=list(current_trans_probs.values())
     )
@@ -167,7 +182,15 @@ for ir in range(0, max_iterations):
     ## a hyperparameter and reuse the weights from the previous outer loop iterations."
     for ik in range(1, k):
         ## "Sample (s, a) from buffer D."
+        d_index = np.random.choice(list(d.keys()))
+        d_entry = d[d_index]
+        ds = d_entry["s"]
+        da = d_entry["a"]
         ## "Apply θ to get r = rθ(s, a), s′ ∼ pθ(s′|s, a)."
-        q = soft_bellman(transition_probs, rewards, states, actions, gamma)
-        ## "Update Qw parameters w to minimize L(θ, w)."
-        pass
+        q_theta = soft_bellman(probs_theta, rewards_theta, states, actions, gamma)
+    ## "Update Qw parameters w to minimize L(θ, w)."
+    # make q match q_theta
+    # q_table = q_theta
+
+
+
