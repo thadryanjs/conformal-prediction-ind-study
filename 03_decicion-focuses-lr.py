@@ -14,7 +14,7 @@
 #     name: python3
 # ---
 
-# %%
+# %% [code]
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -25,7 +25,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 states = [0, 1]
 actions = [0, 1]
 
-# Convert true model to PyTorch tensors
 # Rewards: R(s, a)
 rewards = torch.tensor([
     [-0.45, 0.50],
@@ -47,7 +46,7 @@ tau = 0.001
 n_interations = 100
 
 
-# %%
+# %% [code]
 # πQ(a|s) = expQ(s, a) / sum(expQ(s, a'))
 def get_softmax_policies(states, actions, q_table):
     """
@@ -68,7 +67,7 @@ def get_softmax_policies(states, actions, q_table):
     return results
 
 
-# %%
+# %% [code]
 # BθQ(s, a) = rθ(s, a) + γEpθ(s′|s,a) log ∑ a′ expQ(s′, a′)
 def soft_bellman(s, a, probs_model, rewards_model, states, actions, q_table, gamma,
                  next_state_from_buffer=None, reward_from_buffer=None):
@@ -180,7 +179,7 @@ def update_theta(r_theta_param, p_alpha_param, probs_true, rewards_true, states,
     optimizer.step()
 
 
-# %%
+# %% [code]
 ## "Algorithm 1: Model Based RL with OMD Input:"
 d = {}
 for ir in range(0, max_iterations):
@@ -235,11 +234,16 @@ for ir in range(0, max_iterations):
 print("Training finished.")
 print("\nFinal Q-Table:")
 print(q_table.detach())
+
 print("\nFinal Learned Reward Parameters:")
 print(rewards_theta.detach())
-print("\nFinal Learned Transition Probabilities:")
-print(F.softmax(probs_alpha, dim=-1).detach())
+
 print("\nTrue Reward Parameters:")
 print(rewards)
+
+
+print("\nFinal Learned Transition Probabilities:")
+print(F.softmax(probs_alpha, dim=-1).detach())
+
 print("\nTrue Transition Probabilities:")
 print(probs)
