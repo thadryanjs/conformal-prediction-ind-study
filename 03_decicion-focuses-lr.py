@@ -15,8 +15,9 @@
 # ---
 
 
-# %% [code]
+# %(cell) [code]
 import numpy as np
+import torch
 
 states = [0, 1]
 
@@ -66,7 +67,8 @@ learning_rate = 0.01
 # EMA factor (also slows down learning)
 tau = 0.001
 
-# %% [code]
+
+# %(cell) [code]
 # the actual algo
 """
 NotebookLM
@@ -91,7 +93,7 @@ repeat
 """
 
 
-# %% [code]
+# %(cell) [code]
 # πQ(a|s) = expQ(s, a) / sum(expQ(s, a'))
 def get_softmax_policies(states, actions, q_table):
     results = {}
@@ -121,7 +123,7 @@ for p in test_policies:
     print(f"\tTotal: {total}")
 
 
-# %% [code]
+# %(cell) [code]
 # BθQ(s, a) = rθ(s, a) + γEpθ(s′|s,a) log ∑ a′ expQ(s′, a′)
 def soft_bellman(s, a, probs, rewards, states, actions, q_table, gamma):
     r_theta = rewards[s][a]
@@ -176,11 +178,97 @@ def update_q_table_ema(q_table1, q_table2, states, actions, tau):
 
 
 # ∂Ltrue(Q*)/∂θ = (∂Ltrue/∂Q*) ⋅ (∂Q*/∂θ)
-def update_theta():
-    pass
+def update_theta(r_thea, p_theta, probs, rewards, states, actions,
+                 q_table, target_q_table, gamma, d, n_interations):
+
+    # We use a dummy optimizer here to manage gradient updates.
+    optimizer = torch.optim.Adam([r_thea, p_theta])
+    optimizer.zero_grad()
+
+    # =====================================================================
+    # Step 1: Compute grad Bellman (d(L_true)/dw)
+    # =====================================================================
+
+    total_loss_true = 0.0
+    for i in range(0, n_interations):
+        # select a random entry from the replay buffer
+        d_index = np.random.choice(list(d.keys()))
+        d_entry = d[d_index]
+
+        # unpack the entry
+        ds, da, dr, ds_prime = d_entry["s"], d_entry["a"], d_entry["r"], d_entry["s_prime"]
+
+        # Calculate true Bellman target using the target_q_table
+        bell_true = soft_bellman(ds, da, probs, rewards, states, actions,
+                                 target_q_table, gamma, next_state_from_buffer=ds_prime,
+                                 reward_from_buffer=dr)
+
+        qi = q_table[ds, da]
+
+        # The L_true loss
+        loss = (bell_true - qi) ** 2
+        total_loss_true += loss
+
+    l_estimate_true = total_loss_true / n_interations
+
+    grad_true = torch.autograd.grad(l_estimate_true, q_table,
+                                   create_graph=True, retain_graph=True)[0]
+
+    # =====================================================================
+    # Step 2: Compute grad L_theta (d(L_theta)/dw)
+    # =====================================================================
+
+    total_loss_theta = 0.0
+    for i in range(0, n_interations):
+        # select a random entry from the replay buffer
+        d_index = np.random.choice(list(d.keys()))
+        d_entry = d[d_index]
+
+        # unpack the entry
+        ds, da = d_entry["s"], d_entry["a"]
+
+        current_q_value_theta = q_table[ds, da]
+
+        # Calculate model-induced Bellman target using the learned model and target_q_table
+        bell_theta = soft_bellman(ds, da, p_theta, r_theta, states, actions, target_q_table, gamma)
+
+        loss = (current_q_value_theta - bell_theta) ** 2
+
+        total_loss_theta += loss
+
+    l_theta = total_loss_theta / n_interations
+
+    grad_theta = torch.autograd.grad(l_theta, q_table,
+                                     create_graph=True, retain_graph=True)[0]
+
+    # =====================================================================
+    # Step 3: The Final Update (VJP + optimizer step)
+    # =====================================================================
+
+    # Compute the vector-Jacobian product (the 'approx IFT')
+    final_grad_products = torch.autograd.grad(
+        outputs=grad_theta,
+        inputs=[p_theta, r_theta],
+        grad_outputs=grad_true,
+        retain_graph=False
+    )
+
+    # The gradients are returned in the same order as the inputs list.
+    grad_p_theta_list = final_grad_products[0:len(p_theta)]
+    grad_r_theta_list = final_grad_products[len(p_theta):]
+
+    # Set the gradients for each tensor in the dictionaries
+    for grad, param in zip(grad_p_theta_list, p_theta.values()):
+        param.grad = -grad
+
+    for grad, param in zip(grad_r_theta_list, r_thea.values()):
+        param.grad = -grad
+
+    # Perform the update
+    optimizer.step()
 
 
-# %% [code]
+# %(cell) [code]
 ## "Algorithm 1: Model Based RL with OMD  Input:"
 ## "Initial parameters w, θ, empty replay buffer D."
 ## "repeat"
@@ -220,7 +308,7 @@ for ir in range(0, max_iterations):
         ## "Update Qw parameters w to minimize L(θ, w)."
         ## "BθQ(s, a) = rθ(s, a) + γEpθ(s′|s,a) log ∑ a′ expQ(s′, a′)"
         q_bellman = soft_bellman(
-            ds, da, probs_theta, rewards_theta, states, actions, q_table, gamma
+            ds, da, probs_theta, rewards_theta, states, actions, target_q_table, gamma
             )
         update_q_table(q_table, ds, da, q_bellman, learning_rate)
 
@@ -229,51 +317,6 @@ for ir in range(0, max_iterations):
 
 
     ## "Update model parameters θ according to (14)."
-    # TODO: implement
-    # how to I get an update for p and r out of this?
-    # I am assuming you do this for each param separately? Very vague in the paper.
-    update_theta()
-
-
-
-# %% [code]
-def soft_bellman(s, a, probs, rewards, states, actions, q_table, gamma):
-    r_theta = rewards[s][a]
-    total = 0
-    # for each possible next state...
-    for s_prime in states:
-        potential_next_s = []
-        # ...for each action it could lead to
-        for a_prime in actions:  # Iterate over all actions
-            # get the value
-            potential_next_s.append(q_table[s_prime][a_prime])
-        # to the log-sum-exp
-        next_soft_v = np.log(np.sum(np.exp(potential_next_s)))
-        # account for the probability and add it to the total
-        total += probs[s][a][s_prime] * next_soft_v
-    return r_theta + gamma * total
-
-# inner
-q_bellman = soft_bellman(
-    ds, da, probs_theta, rewards_theta, states, actions, q_table, gamma
-)
-
-# outer
-soft_bellman(s, a, probs, rewards, states, actions, q_table, gamma)
-
-
-update_theta(s, a, probs, rewards, states, actions, q_table, gamma, d):
-    # select a random entry from the replay buffer
-    d_index = np.random.choice(list(d.keys()))
-    d_entry = d[d_index]
-    # unpack the entry
-    ds = d_entry["s"]
-    da = d_entry["a"]
-    dr = d_entry["r"]
-    ds_prime = d_entry["s_prime"]
-    for s in states:
-        for a in actions:
-            bell_true = soft_bellman(s, a, probs, rewards, states,
-                                     actions, q_table, gamma)
-
+    update_theta(rewards_theta, probs_theta, probs, rewards, states, actions,
+                 q_table, target_q_table, gamma, d, n_interations = 100)
 
