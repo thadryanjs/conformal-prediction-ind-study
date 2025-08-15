@@ -56,8 +56,7 @@ rewards = {
     },
 }
 
-
-max_iterations = 50
+max_iterations = 1000
 # Discount factor (immediate rewards vs future rewards)
 gamma = 0.5
 # number of inner loop iterations (lower is more gradual)
@@ -66,7 +65,6 @@ k = 10
 learning_rate = 0.01
 # EMA factor (also slows down learning)
 tau = 0.001
-
 
 # %% [code]
 # the actual algo
@@ -151,7 +149,7 @@ np.random.seed(8675309)
 # q-table with initial small random values
 q_table = {s: {a: np.random.rand() for a in actions} for s in states}
 # the second table is to allow for the EMA proceedure described later
-q_table_ema = q_table.copy()
+target_q_table = q_table.copy()
 
 # rewards_theta is a randomized version of the rewards (same dimensions)
 rewards_theta = {s: {a: np.random.rand() for a in actions} for s in states}
@@ -224,10 +222,10 @@ for ir in range(0, max_iterations):
         q_bellman = soft_bellman(
             ds, da, probs_theta, rewards_theta, states, actions, q_table, gamma
             )
-        update_q_table(q_table_ema, ds, da, q_bellman, learning_rate)
+        update_q_table(q_table, ds, da, q_bellman, learning_rate)
 
     # back to outer loop
-    update_q_table_ema(q_table, q_table_ema, states, actions, tau)
+    update_q_table_ema(q_table, target_q_table, states, actions, tau)
 
 
     ## "Update model parameters θ according to (14)."
@@ -235,5 +233,47 @@ for ir in range(0, max_iterations):
     # how to I get an update for p and r out of this?
     # I am assuming you do this for each param separately? Very vague in the paper.
     update_theta()
+
+
+
+# %% [code]
+def soft_bellman(s, a, probs, rewards, states, actions, q_table, gamma):
+    r_theta = rewards[s][a]
+    total = 0
+    # for each possible next state...
+    for s_prime in states:
+        potential_next_s = []
+        # ...for each action it could lead to
+        for a_prime in actions:  # Iterate over all actions
+            # get the value
+            potential_next_s.append(q_table[s_prime][a_prime])
+        # to the log-sum-exp
+        next_soft_v = np.log(np.sum(np.exp(potential_next_s)))
+        # account for the probability and add it to the total
+        total += probs[s][a][s_prime] * next_soft_v
+    return r_theta + gamma * total
+
+# inner
+q_bellman = soft_bellman(
+    ds, da, probs_theta, rewards_theta, states, actions, q_table, gamma
+)
+
+# outer
+soft_bellman(s, a, probs, rewards, states, actions, q_table, gamma)
+
+
+update_theta(s, a, probs, rewards, states, actions, q_table, gamma, d):
+    # select a random entry from the replay buffer
+    d_index = np.random.choice(list(d.keys()))
+    d_entry = d[d_index]
+    # unpack the entry
+    ds = d_entry["s"]
+    da = d_entry["a"]
+    dr = d_entry["r"]
+    ds_prime = d_entry["s_prime"]
+    for s in states:
+        for a in actions:
+            bell_true = soft_bellman(s, a, probs, rewards, states,
+                                     actions, q_table, gamma)
 
 
