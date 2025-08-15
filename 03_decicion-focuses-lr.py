@@ -317,6 +317,6 @@ for ir in range(0, max_iterations):
 
 
     ## "Update model parameters θ according to (14)."
-    update_theta(rewards_theta, probs_theta, probs, rewards, states, actions,
-                 q_table, target_q_table, gamma, d, n_interations = 100)
+    # update_theta(rewards_theta, probs_theta, probs, rewards, states, actions,
+    #            q_table, target_q_table, gamma, d, n_interations = 100)
 
