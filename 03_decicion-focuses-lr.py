@@ -57,11 +57,16 @@ rewards = {
 }
 
 
-# Discount factor
-gamma = 0.9
-max_iterations = 100
-k = 100
-learning_rate = 0.1
+max_iterations = 50
+# Discount factor (immediate rewards vs future rewards)
+gamma = 0.5
+# number of inner loop iterations (lower is more gradual)
+k = 10
+# slower learning to prevent issues with numberical stability
+learning_rate = 0.01
+# EMA factor (also slows down learning)
+tau = 0.001
+
 
 # %% [code]
 # the actual algo
@@ -87,15 +92,18 @@ repeat
     until the maximum number of interactions is reached
 """
 
+
 # %% [code]
 # πQ(a|s) = expQ(s, a) / sum(expQ(s, a'))
-def get_softmax_policies(state, actions, q_table):
+def get_softmax_policies(states, actions, q_table):
     results = {}
     for s in states:
         state_policies = {}
+        max_q_value = np.max([q_table[s][a] for a in actions])
         for a in actions:
-            numerator = np.exp(q_table[s][a])
-            denominator = np.sum([np.exp(q_table[s][a]) for a in actions])
+            # Subtract max to prevent overflow (leading to float errors)
+            numerator = np.exp(q_table[s][a] - max_q_value)
+            denominator = np.sum([np.exp(q_table[s][a] - max_q_value) for a in actions])
             state_policies[a] = numerator / denominator
         results[s] = state_policies
     return results
@@ -134,7 +142,6 @@ def soft_bellman(s, a, probs, rewards, states, actions, q_table, gamma):
     return r_theta + gamma * total
 
 
-# %% [code]
 # set a seeed
 np.random.seed(8675309)
 
@@ -143,17 +150,34 @@ np.random.seed(8675309)
 
 # q-table with initial small random values
 q_table = {s: {a: np.random.rand() for a in actions} for s in states}
+# the second table is to allow for the EMA proceedure described later
+q_table_ema = q_table.copy()
+
 # rewards_theta is a randomized version of the rewards (same dimensions)
 rewards_theta = {s: {a: np.random.rand() for a in actions} for s in states}
+
 # probs_theta is a randomized version of the probs (same dimensions)
 probs_theta = {
     s: {a: {s_prime: np.random.rand() for s_prime in states} for a in actions}
     for s in states
 }
 
-def update_q_table():
-    pass
 
+# optimization for the inner loop
+# minimize: w Es,a[Qw(s, a)−BθQw̄(s, a)]2
+def update_q_table(q_table, s, a, q_bellman, learning_rate):
+    current_q_value = q_table[s][a]
+    error = current_q_value - q_bellman
+    q_table[s][a] = q_table[s][a] - learning_rate * (2 * error)
+
+# this is called after the inner loop in to make sure wide swings don't introduce error
+def update_q_table_ema(q_table1, q_table2, states, actions, tau):
+    for s_key in states:
+        for a_key in actions:
+            q_table2[s_key][a_key] = (1 - tau) * q_table2[s_key][a_key] + tau * q_table1[s_key][a_key]
+
+
+# ∂Ltrue(Q*)/∂θ = (∂Ltrue/∂Q*) ⋅ (∂Q*/∂θ)
 def update_theta():
     pass
 
@@ -170,7 +194,7 @@ for ir in range(0, max_iterations):
     else:
         s = s_prime
     ## "Sample an action a using softmax over Qw(s, a)."
-    action_probs = get_softmax_policies(s, actions, q_table)
+    action_probs = get_softmax_policies(states, actions, q_table)
     current_state_policies = action_probs[s]
     a = np.random.choice(actions, p=list(current_state_policies.values()))
     ## "Apply a to get r = r(s, a), s′ ∼ p(s′|s, a)."
@@ -200,13 +224,16 @@ for ir in range(0, max_iterations):
         q_bellman = soft_bellman(
             ds, da, probs_theta, rewards_theta, states, actions, q_table, gamma
             )
-        # TODO: implement q table update
-        update_q_table()
+        update_q_table(q_table_ema, ds, da, q_bellman, learning_rate)
 
     # back to outer loop
+    update_q_table_ema(q_table, q_table_ema, states, actions, tau)
+
 
     ## "Update model parameters θ according to (14)."
     # TODO: implement
     # how to I get an update for p and r out of this?
     # I am assuming you do this for each param separately? Very vague in the paper.
     update_theta()
+
+
