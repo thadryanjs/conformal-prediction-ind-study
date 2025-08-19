@@ -14,7 +14,8 @@
 #     name: python3
 # ---
 
-# %% [code]
+
+# [inactive delimiter] [code]
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -43,10 +44,11 @@ gamma = 0.5
 k = 10
 learning_rate = 0.01
 tau = 0.001
+# rename
 n_interations = 100
 
 
-# %% [code]
+# [inactive delimiter] [code]
 # πQ(a|s) = expQ(s, a) / sum(expQ(s, a'))
 def get_softmax_policies(states, actions, q_table):
     """
@@ -67,7 +69,7 @@ def get_softmax_policies(states, actions, q_table):
     return results
 
 
-# %% [code]
+# [inactive delimiter] [code]
 # BθQ(s, a) = rθ(s, a) + γEpθ(s′|s,a) log ∑ a′ expQ(s′, a′)
 def soft_bellman(s, a, probs_model, rewards_model, states, actions, q_table, gamma,
                  next_state_from_buffer=None, reward_from_buffer=None):
@@ -179,7 +181,7 @@ def update_theta(r_theta_param, p_alpha_param, probs_true, rewards_true, states,
     optimizer.step()
 
 
-# %% [code]
+# [inactive delimiter] [code]
 ## "Algorithm 1: Model Based RL with OMD Input:"
 d = {}
 for ir in range(0, max_iterations):
@@ -221,15 +223,16 @@ for ir in range(0, max_iterations):
         q_table, target_q_table, gamma, d, n_interations, learning_rate
     )
 
-    if ir % 100 == 0:
-        print(f"Iteration: {ir}")
-        print("Final Q-Table:")
-        print(q_table.detach())
-        print("Learned Reward Parameters:")
-        print(rewards_theta.detach())
-        print("Learned Transition Probabilities:")
-        print(F.softmax(probs_alpha, dim=-1).detach())
-        print("--------------------------")
+
+
+if ir % 100 == 0:
+    print("Iteration " + str(ir) + ":")
+    print("Q-Table:")
+    print(q_table.detach())
+    print("\nLearned Reward Parameters:")
+    print(rewards_theta.detach())
+    print("\nLearned Transition Probabilities:")
+    print(F.softmax(probs_alpha, dim=-1).detach())
 
 print("Training finished.")
 print("\nFinal Q-Table:")
@@ -247,3 +250,9 @@ print(F.softmax(probs_alpha, dim=-1).detach())
 
 print("\nTrue Transition Probabilities:")
 print(probs)
+
+# Print the optimal policy
+print("\nOptimal Policy based on Final Q-Table:")
+for s in states:
+    optimal_action = torch.argmax(q_table[s]).item()
+    print(f"In State {s}, the best action is: {optimal_action}")
