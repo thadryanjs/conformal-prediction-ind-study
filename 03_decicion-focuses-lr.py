@@ -408,3 +408,106 @@ for s in states:
 
 print("\nDone.")
 
+
+
+# %% [code]
+import numpy as np
+import torch
+
+# --- hyperparams for evaluation
+eval_episodes = 200
+max_steps = 100
+gamma_eval = gamma  # use same discount as training
+
+# Convert tensors to numpy for DP
+P = probs.cpu().numpy()       # shape [S, A, S]
+R = rewards.cpu().numpy()     # shape [S, A]
+S = len(states)
+A = len(actions)
+
+# Value iteration to compute optimal V* and optimal Q*
+def value_iteration(P, R, gamma, tol=1e-8, max_iter=10000):
+    S, A, _ = P.shape
+    V = np.zeros(S)
+    for it in range(max_iter):
+        V_prev = V.copy()
+        Q = np.zeros((S, A))
+        for s in range(S):
+            for a in range(A):
+                Q[s, a] = R[s, a] + gamma * (P[s, a, :] @ V_prev)
+        V = np.max(Q, axis=1)
+        if np.max(np.abs(V - V_prev)) < tol:
+            break
+    # derive optimal policy (greedy wrt Q)
+    pi_star = np.argmax(Q, axis=1)
+    return V, Q, pi_star
+
+V_star, Q_star, pi_star = value_iteration(P, R, gamma_eval)
+
+# Evaluate a policy on true MDP
+def eval_policy_on_true(policy_q_tensor, P_true, R_true, n_episodes=100, max_steps=100, gamma=0.99):
+    # policy_q_tensor: torch tensor [S,A] or numpy policy (if numpy, interpret as greedy)
+    # We'll evaluate greedy policy from Q if tensor provided
+    if isinstance(policy_q_tensor, torch.Tensor):
+        policy_q = policy_q_tensor.detach().cpu().numpy()
+        # use greedy policy
+        policy = np.argmax(policy_q, axis=1)
+    else:
+        policy = np.array(policy_q_tensor)
+
+    returns = []
+    for ep in range(n_episodes):
+        s = np.random.choice(S)
+        G = 0.0
+        discount = 1.0
+        for t in range(max_steps):
+            a = int(policy[s])
+            r = float(R_true[s, a])
+            next_p = P_true[s, a, :]
+            next_p = next_p / next_p.sum()
+            s = int(np.random.choice(S, p=next_p))
+            G += discount * r
+            discount *= gamma
+        returns.append(G)
+    return np.mean(returns), np.std(returns)
+
+# Evaluate optimal policy (pi_star) by simulation and compute its expected return analytically
+mean_opt_sim, std_opt_sim = eval_policy_on_true(pi_star, P, R, n_episodes=eval_episodes, max_steps=max_steps, gamma=gamma_eval)
+
+# Evaluate learned greedy policy from your final q_table
+mean_learned_sim, std_learned_sim = eval_policy_on_true(q_table.detach(), P, R, n_episodes=eval_episodes, max_steps=max_steps, gamma=gamma_eval)
+
+# Also compute expected return of policies from stationary distribution starting states if needed.
+# Print summary
+print("=== Comparison to true MDP optimal policy ===")
+print(f"Optimal policy (via value iteration) greedy returns (simulated over {eval_episodes} eps): mean={mean_opt_sim:.4f}, std={std_opt_sim:.4f}")
+print(f"Learned greedy policy returns (simulated over {eval_episodes} eps): mean={mean_learned_sim:.4f}, std={std_learned_sim:.4f}")
+gap = mean_opt_sim - mean_learned_sim
+fraction = mean_learned_sim / mean_opt_sim if mean_opt_sim != 0 else float('nan')
+print(f"Absolute gap: {gap:.4f}; Fraction of optimal: {fraction*100:.2f}%")
+print("\nOptional: show Q* and learned Q (detached):")
+print("Q* (optimal Q):\n", Q_star)
+print("Learned Q (detached):\n", q_table.detach().cpu().numpy())
+
+"""
+These results show the learned greedy policy achieves exactly the same episode returns as the optimal greedy policy (mean 1.0, gap 0.0, 100% of optimal). A few brief points to interpret what that means and any caveats:
+
+Policy performance: The greedy policy derived from your learned Q achieves the optimal return in the true MDP (by your simulation). So in terms of control performance, your agent found an optimal policy.
+Q-values mismatch: The learned Q differs from Q* (the optimal action-value function). That’s OK and expected in some cases:
+Multiple Q-functions can induce the same greedy policy (value-equivalent models). The outer objective (returns) only depends on the policy, not on the exact Q-values.
+Your learned Q may be offset or scaled relative to Q*, or it may overestimate values while preserving action ordering. What matters for greedy actions is argmax, not absolute Q numbers.
+Why this can happen:
+The model (θ) is learned to produce useful Bellman targets for control (OMD), not to match the true dynamics or true Q-values exactly. As the paper discusses, a control-oriented model can yield useful (even low-likelihood) predictions that produce good targets for value learning.
+If you used soft (entropy-regularized) Bellman or softmax policies during training, Q magnitudes can differ from hard-optimal Q* while still yielding the same greedy actions.
+Checks you can run (optional, quick):
+Verify greedy action ordering equals Q* argmax(s):
+For each state s check torch.argmax(Q_learned[s]) == torch.argmax(Q_star[s]).
+Inspect advantage gaps: Q(s, a_best) − Q(s, a_other) for learned vs optimal to see margin sizes.
+Evaluate robustness: run noisy or perturbed starts to ensure the policy’s performance generalizes.
+Conclusion: Even though the learned Q-table values are not numerically equal to Q*, your learned policy attains the optimal return — so you have successfully captured the reward-relevant structure. If you’d like, I can:
+
+Add code to compare argmaxes and advantage margins.
+Show how to compute exact expected returns analytically (not via simulation) for this small MDP.
+Help adjust training if you prefer the learned Q to better match Q* numerically (e.g., add a regularizer or change losses). Which would you like?
+
+"""
