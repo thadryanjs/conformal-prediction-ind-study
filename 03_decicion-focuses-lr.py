@@ -15,7 +15,7 @@
 # ---
 
 
-# [inactive delimiter] [code]
+# %% [code]
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -45,10 +45,11 @@ k = 10
 learning_rate = 0.01
 tau = 0.001
 # rename
-n_interations = 100
+n_meta_iterations = 100
 
 
-# [inactive delimiter] [code]
+# %% [code]
+# checked with AI
 # πQ(a|s) = expQ(s, a) / sum(expQ(s, a'))
 def get_softmax_policies(states, actions, q_table):
     """
@@ -69,7 +70,7 @@ def get_softmax_policies(states, actions, q_table):
     return results
 
 
-# [inactive delimiter] [code]
+# %% [code]
 # BθQ(s, a) = rθ(s, a) + γEpθ(s′|s,a) log ∑ a′ expQ(s′, a′)
 def soft_bellman(s, a, probs_model, rewards_model, states, actions, q_table, gamma,
                  next_state_from_buffer=None, reward_from_buffer=None):
@@ -103,9 +104,7 @@ np.random.seed(8675309)
 q_table = torch.rand(len(states), len(actions), requires_grad=True, device=device)
 target_q_table = q_table.clone().detach()
 
-# Model parameters to be updated by the outer loop
 rewards_theta = torch.rand(len(states), len(actions), requires_grad=True, device=device)
-# Probs are parameterized by unconstrained alpha values, which we will learn
 probs_alpha = torch.rand(len(states), len(actions), len(states), requires_grad=True, device=device)
 
 
@@ -126,7 +125,7 @@ def update_q_table_ema(q_table1, q_table2, tau):
 
 # The core update function using PyTorch's autograd
 def update_theta(r_theta_param, p_alpha_param, probs_true, rewards_true, states, actions,
-                 q_table, target_q_table, gamma, d, n_interations, learning_rate):
+                 q_table, target_q_table, gamma, d, n_meta_iterations, learning_rate):
 
     # Use a single optimizer to handle all model parameters
     optimizer = torch.optim.Adam([r_theta_param, p_alpha_param], lr=learning_rate)
@@ -134,7 +133,7 @@ def update_theta(r_theta_param, p_alpha_param, probs_true, rewards_true, states,
 
     # Step 1: Compute grad Bellman (d(L_true)/dw)
     total_loss_true = torch.tensor(0.0, device=device)
-    for i in range(0, n_interations):
+    for i in range(0, n_meta_iterations):
         d_index = np.random.choice(list(d.keys()))
         d_entry = d[d_index]
         ds, da, dr, ds_prime = d_entry["s"], d_entry["a"], d_entry["r"], d_entry["s_prime"]
@@ -146,7 +145,7 @@ def update_theta(r_theta_param, p_alpha_param, probs_true, rewards_true, states,
         qi = q_table[ds, da]
         loss = (bell_true.detach() - qi) ** 2
         total_loss_true += loss
-    l_estimate_true = total_loss_true / n_interations
+    l_estimate_true = total_loss_true / n_meta_iterations
 
     grad_true = torch.autograd.grad(l_estimate_true, q_table, create_graph=True, retain_graph=True)[0]
 
@@ -154,7 +153,7 @@ def update_theta(r_theta_param, p_alpha_param, probs_true, rewards_true, states,
     total_loss_theta = torch.tensor(0.0, device=device)
     probs_learned = F.softmax(p_alpha_param, dim=-1)
 
-    for i in range(0, n_interations):
+    for i in range(0, n_meta_iterations):
         d_index = np.random.choice(list(d.keys()))
         d_entry = d[d_index]
         ds, da = d_entry["s"], d_entry["a"]
@@ -163,7 +162,7 @@ def update_theta(r_theta_param, p_alpha_param, probs_true, rewards_true, states,
         bell_theta = soft_bellman(ds, da, probs_learned, r_theta_param, states, actions, target_q_table, gamma)
         loss = (current_q_value_theta - bell_theta) ** 2
         total_loss_theta += loss
-    l_theta = total_loss_theta / n_interations
+    l_theta = total_loss_theta / n_meta_iterations
 
     grad_theta = torch.autograd.grad(l_theta, q_table, create_graph=True, retain_graph=True)[0]
 
@@ -181,7 +180,7 @@ def update_theta(r_theta_param, p_alpha_param, probs_true, rewards_true, states,
     optimizer.step()
 
 
-# [inactive delimiter] [code]
+# %% [code]
 ## "Algorithm 1: Model Based RL with OMD Input:"
 d = {}
 for ir in range(0, max_iterations):
@@ -207,7 +206,7 @@ for ir in range(0, max_iterations):
 
     d[ir] = {"s": s, "a": a, "r": r, "s_prime": s_prime}
 
-    for ik in range(1, k):
+    for ik in range(k):
         d_index = np.random.choice(list(d.keys()))
         d_entry = d[d_index]
         ds, da = d_entry["s"], d_entry["a"]
@@ -220,7 +219,7 @@ for ir in range(0, max_iterations):
 
     update_theta(
         rewards_theta, probs_alpha, probs, rewards, states, actions,
-        q_table, target_q_table, gamma, d, n_interations, learning_rate
+        q_table, target_q_table, gamma, d, n_meta_iterations, learning_rate
     )
 
 

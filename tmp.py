@@ -1,4 +1,4 @@
-""""
+""" "
 You're asking for a concrete implementation of Optimal Model Design (OMD) for the tabular case using only NumPy, focusing on the update functions for the inner and outer loops as described in Algorithm 1. You also mentioned that you're less familiar with the implementation details of minimization methods.
 In the tabular setting, the core elements of OMD are realized through specific numerical operations on arrays (tables) representing states, actions, rewards, and transitions.
 Key Concepts for Tabular OMD Implementation
@@ -37,25 +37,27 @@ alpha_softmax = 0.01  # Temperature for softmax in policy (pi_Q) [7, 11]
 
 # True MDP definition (for Ltrue objective and comparison)
 # r(s,a) is reward for state-action pair (s,a)
-r_true = np.array([
-    [1.0, 0.0],  # r(s=0, a=0), r(s=0, a=1)
-    [0.0, 1.0]   # r(s=1, a=0), r(s=1, a=1)
-])
+r_true = np.array(
+    [[1.0, 0.0], [0.0, 1.0]]  # r(s=0, a=0), r(s=0, a=1)  # r(s=1, a=0), r(s=1, a=1)
+)
 # p(s'|s,a) is transition probability from (s,a) to s'
-p_true = np.array([  # Shape (S, A, S)
-    [[0.9, 0.1],  # s=0, a=0 -> s'=0, s'=1
-     [0.1, 0.9]],  # s=0, a=1 -> s'=0, s'=1
-    [[0.8, 0.2],  # s=1, a=0 -> s'=0, s'=1
-     [0.2, 0.8]]   # s=1, a=1 -> s'=0, s'=1
-])
-rho0 = np.array([0.5, 0.5]) # Initial state distribution [10]
+p_true = np.array(
+    [  # Shape (S, A, S)
+        [[0.9, 0.1], [0.1, 0.9]],  # s=0, a=0 -> s'=0, s'=1  # s=0, a=1 -> s'=0, s'=1
+        [[0.8, 0.2], [0.2, 0.8]],  # s=1, a=0 -> s'=0, s'=1  # s=1, a=1 -> s'=0, s'=1
+    ]
+)
+rho0 = np.array([0.5, 0.5])  # Initial state distribution [10]
 
 # Model parameters (theta) - These are what OMD learns
 # Initialized randomly for the example
 r_theta = np.random.rand(S, A)  # Learned reward function (r_theta(s,a))
-p_theta_logits = np.random.rand(S, A, S) # Learned transition logits (will be softmaxed to get p_theta(s'|s,a)) [4]
+p_theta_logits = np.random.rand(
+    S, A, S
+)  # Learned transition logits (will be softmaxed to get p_theta(s'|s,a)) [4]
 
 # --- 2. Helper Functions for Mathematical Operations ---
+
 
 def logsumexp(arr, axis=None):
     """
@@ -64,6 +66,7 @@ def logsumexp(arr, axis=None):
     """
     max_val = np.max(arr, axis=axis, keepdims=True)
     return np.log(np.sum(np.exp(arr - max_val), axis=axis, keepdims=True)) + max_val
+
 
 def softmax_q(Q_s_prime_row, alpha):
     """
@@ -74,6 +77,7 @@ def softmax_q(Q_s_prime_row, alpha):
     exp_Q_scaled = np.exp(Q_s_prime_row / alpha)
     return exp_Q_scaled / np.sum(exp_Q_scaled)
 
+
 def softmax_p_logits(logits, axis=-1):
     """
     Converts model's transition logits into probabilities using softmax. [4]
@@ -82,9 +86,19 @@ def softmax_p_logits(logits, axis=-1):
     exp_logits_scaled = np.exp(logits - max_val)
     return exp_logits_scaled / np.sum(exp_logits_scaled, axis=axis, keepdims=True)
 
+
 # --- 3. Inner Loop: find_Q_star_tabular ---
 
-def find_Q_star_tabular(r_model, p_model_logits, gamma, alpha_softmax, Q_init=None, tol=1e-6, max_iterations=1000):
+
+def find_Q_star_tabular(
+    r_model,
+    p_model_logits,
+    gamma,
+    alpha_softmax,
+    Q_init=None,
+    tol=1e-6,
+    max_iterations=1000,
+):
     """
     **Inner Loop Update Function for Tabular Case.**
 
@@ -113,7 +127,9 @@ def find_Q_star_tabular(r_model, p_model_logits, gamma, alpha_softmax, Q_init=No
     else:
         Q = np.copy(Q_init)
 
-    p_model = softmax_p_logits(p_model_logits) # Convert logits to probabilities for calculation
+    p_model = softmax_p_logits(
+        p_model_logits
+    )  # Convert logits to probabilities for calculation
 
     for iteration in range(max_iterations):
         Q_prev = Q.copy()
@@ -125,7 +141,9 @@ def find_Q_star_tabular(r_model, p_model_logits, gamma, alpha_softmax, Q_init=No
                 # Term: gamma * Ep_theta(s'|s,a) [log sum_a' exp(Q(s', a'))]
                 # Note: Eq. (3) shows 'log sum_a' expQ', implying alpha=1 for this term.
                 # If a different alpha is desired here, it needs to be applied to Q[s_prime, :].
-                next_state_values_lse = np.array([logsumexp(Q[s_prime, :]).item() for s_prime in range(S)])
+                next_state_values_lse = np.array(
+                    [logsumexp(Q[s_prime, :]).item() for s_prime in range(S)]
+                )
 
                 transition_term = np.sum(p_model[s, a, :] * next_state_values_lse)
 
@@ -139,7 +157,9 @@ def find_Q_star_tabular(r_model, p_model_logits, gamma, alpha_softmax, Q_init=No
         print("Warning: Value iteration did not converge within max_iterations.")
     return Q
 
+
 # --- 4. Outer Loop: update_model_parameters_tabular ---
+
 
 def compute_Ltrue(Q_star_model, r_true_mdp, p_true_mdp, gamma_mdp):
     """
@@ -153,17 +173,23 @@ def compute_Ltrue(Q_star_model, r_true_mdp, p_true_mdp, gamma_mdp):
             reward_term_true = r_true_mdp[s, a]
 
             # log sum_a' exp(Q(s', a'))
-            next_state_values_lse_true = np.array([logsumexp(Q_star_model[s_prime, :]).item() for s_prime in range(S)])
+            next_state_values_lse_true = np.array(
+                [logsumexp(Q_star_model[s_prime, :]).item() for s_prime in range(S)]
+            )
 
-            transition_term_true = np.sum(p_true_mdp[s, a, :] * next_state_values_lse_true)
+            transition_term_true = np.sum(
+                p_true_mdp[s, a, :] * next_state_values_lse_true
+            )
 
             BQ_sa = reward_term_true + gamma_mdp * transition_term_true
 
-            bellman_errors_sq[s, a] = (Q_star_model[s, a] - BQ_sa)**2
+            bellman_errors_sq[s, a] = (Q_star_model[s, a] - BQ_sa) ** 2
 
     return np.sum(bellman_errors_sq)
 
+
 # --- Jacobian building functions for IFT ---
+
 
 def compute_jacobian_f_Q(Q_val, r_model, p_model_logits, gamma):
     """
@@ -171,14 +197,16 @@ def compute_jacobian_f_Q(Q_val, r_model, p_model_logits, gamma):
     This is the (∂f(θ, w*)/∂w) term from the IFT formula. [3]
     Shape: (S*A) x (S*A)
     """
-    p_model = softmax_p_logits(p_model_logits) # p_theta(s'|s,a)
-    SA = S * A # Total number of Q-values
-    J_f_Q = np.eye(SA) # Initialize as Identity matrix (for the Q term in f = Q - B_theta Q)
+    p_model = softmax_p_logits(p_model_logits)  # p_theta(s'|s,a)
+    SA = S * A  # Total number of Q-values
+    J_f_Q = np.eye(
+        SA
+    )  # Initialize as Identity matrix (for the Q term in f = Q - B_theta Q)
 
-    for i_sa in range(SA): # Iterate over output (s,a) of f
+    for i_sa in range(SA):  # Iterate over output (s,a) of f
         s, a = np.unravel_index(i_sa, (S, A))
 
-        for j_s_prime_a_prime in range(SA): # Iterate over input (s',a') from Q
+        for j_s_prime_a_prime in range(SA):  # Iterate over input (s',a') from Q
             s_prime, a_prime = np.unravel_index(j_s_prime_a_prime, (S, A))
 
             # The derivative ∂B_theta Q(s,a) / ∂Q(s_prime, a_prime)
@@ -187,13 +215,16 @@ def compute_jacobian_f_Q(Q_val, r_model, p_model_logits, gamma):
 
             # The derivative of logsumexp(Q(s_prime,:)) with respect to Q(s_prime, a_prime) is softmax(Q(s_prime,:))[a_prime]
             # Assuming alpha=1 in logsumexp (as per Eq. 3)
-            softmax_term_for_deriv = np.exp(Q_val[s_prime, a_prime]) / np.sum(np.exp(Q_val[s_prime, :]))
+            softmax_term_for_deriv = np.exp(Q_val[s_prime, a_prime]) / np.sum(
+                np.exp(Q_val[s_prime, :])
+            )
 
             derivative_part = gamma * p_model[s, a, s_prime] * softmax_term_for_deriv
 
             # Subtract this from the identity matrix part because f = Q - B_theta Q
             J_f_Q[i_sa, j_s_prime_a_prime] -= derivative_part
     return J_f_Q
+
 
 def compute_jacobian_f_theta(Q_val, r_model, p_model_logits, gamma):
     """
@@ -202,7 +233,7 @@ def compute_jacobian_f_theta(Q_val, r_model, p_model_logits, gamma):
     θ comprises (r_theta, p_theta_logits).
     Shape: (S*A) x (S*A + S*A*S) -- (number of Q-values) x (total number of model parameters)
     """
-    p_model = softmax_p_logits(p_model_logits) # Current p_theta(s'|s,a)
+    p_model = softmax_p_logits(p_model_logits)  # Current p_theta(s'|s,a)
     SA = S * A
 
     num_r_params = S * A
@@ -212,23 +243,29 @@ def compute_jacobian_f_theta(Q_val, r_model, p_model_logits, gamma):
     J_f_theta = np.zeros((SA, total_theta_params))
 
     # Calculate logsumexp values for all states s' (these are independent of model params)
-    lse_values_per_s_prime = np.array([logsumexp(Q_val[s_prime, :]).item() for s_prime in range(S)])
+    lse_values_per_s_prime = np.array(
+        [logsumexp(Q_val[s_prime, :]).item() for s_prime in range(S)]
+    )
 
     # Part 1: Derivatives with respect to r_model parameters
     # ∂f_sa / ∂r_model(s',a') = -∂r_model(s,a)/∂r_model(s',a')
     # This is -1 if (s,a) == (s',a') and 0 otherwise.
     for i_sa in range(SA):
-        r_param_idx = i_sa # flat index for r_model(s,a) parameter
+        r_param_idx = i_sa  # flat index for r_model(s,a) parameter
         J_f_theta[i_sa, r_param_idx] = -1.0
 
     # Part 2: Derivatives with respect to p_model_logits parameters
     # ∂f_sa / ∂p_model_logits(s_target, a_target, s_prime_k)
     # The derivative is non-zero only if (s,a) from f_sa matches (s_target, a_target)
-    for i_sa in range(SA): # (s,a) for the output f_sa
+    for i_sa in range(SA):  # (s,a) for the output f_sa
         s, a = np.unravel_index(i_sa, (S, A))
 
-        for s_prime_k in range(S): # Index for the specific s' in p_model_logits(s,a,s')
-            p_logits_param_idx = num_r_params + np.ravel_multi_index((s, a, s_prime_k), (S, A, S))
+        for s_prime_k in range(
+            S
+        ):  # Index for the specific s' in p_model_logits(s,a,s')
+            p_logits_param_idx = num_r_params + np.ravel_multi_index(
+                (s, a, s_prime_k), (S, A, S)
+            )
 
             # Derivative of the sum_s_hat p_theta(s_hat|s,a) * LSE(s_hat) term
             # with respect to p_theta_logits(s,a,s_prime_k)
@@ -237,7 +274,9 @@ def compute_jacobian_f_theta(Q_val, r_model, p_model_logits, gamma):
             for s_hat in range(S):
                 # Derivative of p_model(s_hat | s, a) with respect to p_model_logits(s,a,s_prime_k)
                 # This is the derivative of softmax: p_j * (delta_jk - p_k)
-                p_derivative_term = p_model[s, a, s_hat] * (1.0 if s_hat == s_prime_k else 0.0)
+                p_derivative_term = p_model[s, a, s_hat] * (
+                    1.0 if s_hat == s_prime_k else 0.0
+                )
                 p_derivative_term -= p_model[s, a, s_hat] * p_model[s, a, s_prime_k]
 
                 sum_over_s_hat += p_derivative_term * lse_values_per_s_prime[s_hat]
@@ -245,6 +284,7 @@ def compute_jacobian_f_theta(Q_val, r_model, p_model_logits, gamma):
             J_f_theta[i_sa, p_logits_param_idx] = -gamma * sum_over_s_hat
 
     return J_f_theta
+
 
 def compute_grad_Ltrue_Q(Q_star_model, true_r, true_p, gamma):
     """
@@ -257,15 +297,17 @@ def compute_grad_Ltrue_Q(Q_star_model, true_r, true_p, gamma):
 
     # First, pre-compute (Q(s,a) - BQ(s,a)) for all (s,a) for efficiency
     # BQ uses the true MDP parameters (r_true, p_true)
-    BQ_true = np.zeros((S,A))
+    BQ_true = np.zeros((S, A))
     for s in range(S):
         for a in range(A):
-            reward_term_true = true_r[s,a]
-            next_state_values_lse_true = np.array([logsumexp(Q_star_model[s_prime, :]).item() for s_prime in range(S)])
-            transition_term_true = np.sum(true_p[s,a,:] * next_state_values_lse_true)
-            BQ_true[s,a] = reward_term_true + gamma * transition_term_true
+            reward_term_true = true_r[s, a]
+            next_state_values_lse_true = np.array(
+                [logsumexp(Q_star_model[s_prime, :]).item() for s_prime in range(S)]
+            )
+            transition_term_true = np.sum(true_p[s, a, :] * next_state_values_lse_true)
+            BQ_true[s, a] = reward_term_true + gamma * transition_term_true
 
-    diff_Q_BQ = Q_star_model - BQ_true # Element-wise (Q(s,a) - BQ(s,a))
+    diff_Q_BQ = Q_star_model - BQ_true  # Element-wise (Q(s,a) - BQ(s,a))
 
     # Iterate through target Q(s_target, a_target) for which we compute the gradient
     for target_idx in range(SA):
@@ -281,15 +323,22 @@ def compute_grad_Ltrue_Q(Q_star_model, true_r, true_p, gamma):
                 # ∂BQ(s,a)/∂Q(s_target, a_target) is non-zero only if true_p[s,a,s_target] > 0
                 # It's gamma * p_true(s_target|s,a) * softmax_Q(s_target, a_target)
                 if true_p[s, a, s_target] > 0:
-                    softmax_term_true_deriv = np.exp(Q_star_model[s_target, a_target]) / np.sum(np.exp(Q_star_model[s_target, :]))
-                    derivative_part_true = gamma * true_p[s, a, s_target] * softmax_term_true_deriv
-                    grad_term2 -= 2 * diff_Q_BQ[s,a] * derivative_part_true
+                    softmax_term_true_deriv = np.exp(
+                        Q_star_model[s_target, a_target]
+                    ) / np.sum(np.exp(Q_star_model[s_target, :]))
+                    derivative_part_true = (
+                        gamma * true_p[s, a, s_target] * softmax_term_true_deriv
+                    )
+                    grad_term2 -= 2 * diff_Q_BQ[s, a] * derivative_part_true
 
         grad_Ltrue_Q[target_idx] = grad_term1 + grad_term2
 
     return grad_Ltrue_Q
 
-def update_model_parameters_tabular(Q_star, r_model, p_model_logits, r_true_mdp, p_true_mdp, gamma_mdp, lr_theta):
+
+def update_model_parameters_tabular(
+    Q_star, r_model, p_model_logits, r_true_mdp, p_true_mdp, gamma_mdp, lr_theta
+):
     """
     **Outer Loop Update Function for Tabular Case.**
 
@@ -326,16 +375,16 @@ def update_model_parameters_tabular(Q_star, r_model, p_model_logits, r_true_mdp,
         J_Q_inv = np.linalg.inv(J_f_Q)
     except np.linalg.LinAlgError:
         print("Error: Jacobian ∂f/∂Q is singular. Cannot invert. Model update skipped.")
-        return r_model, p_model_logits, False # Indicate failure
+        return r_model, p_model_logits, False  # Indicate failure
 
     # 5. Compute ∂Q*/∂theta = - ( (∂f/∂Q)^-1 @ (∂f/∂theta) )
     # This term tells us how Q* (the inner loop solution) changes with respect to theta
-    dQ_star_dtheta = - (J_Q_inv @ J_f_theta) # Shape: (S*A) x (total_theta_params)
+    dQ_star_dtheta = -(J_Q_inv @ J_f_theta)  # Shape: (S*A) x (total_theta_params)
 
     # 6. Compute total gradient ∂Ltrue/∂theta = (∂Ltrue/∂Q*) @ (∂Q*/∂theta)
     # Reshape grad_Ltrue_Q_star to a row vector for matrix multiplication
     total_grad_theta = grad_Ltrue_Q_star.reshape(1, -1) @ dQ_star_dtheta
-    total_grad_theta = total_grad_theta.flatten() # Flatten back to a 1D array
+    total_grad_theta = total_grad_theta.flatten()  # Flatten back to a 1D array
 
     # Extract gradients for r_model and p_model_logits parts of theta
     num_r_params = S * A
@@ -346,16 +395,18 @@ def update_model_parameters_tabular(Q_star, r_model, p_model_logits, r_true_mdp,
     new_r_model = r_model - lr_theta * grad_r_model
     new_p_logits = p_model_logits - lr_theta * grad_p_logits
 
-    return new_r_model, new_p_logits, True # Indicate success
+    return new_r_model, new_p_logits, True  # Indicate success
+
 
 # --- Main Training Loop Simulation (Orchestrates Inner and Outer Loops) ---
+
 
 def run_omd_tabular_training(num_outer_loops, lr_theta):
     """
     Simulates the OMD training process for tabular MDPs.
     This serves as the main execution flow similar to Algorithm 1.
     """
-    global r_theta, p_theta_logits # Access global model parameters
+    global r_theta, p_theta_logits  # Access global model parameters
 
     print("--- Starting OMD Tabular Training ---")
     print(f"Initial r_theta (random):\n{r_theta}")
@@ -373,14 +424,18 @@ def run_omd_tabular_training(num_outer_loops, lr_theta):
 
         # Step 1: Inner Loop - Find Q* for current model parameters (theta)
         # We warm-start value iteration with the Q* from the previous outer loop
-        current_Q_star = find_Q_star_tabular(r_theta, p_theta_logits, gamma, alpha_softmax, Q_init=current_Q_star)
-
-        # Step 2: Outer Loop - Update model parameters theta using Implicit Differentiation
-        updated_r_theta, updated_p_theta_logits, success = update_model_parameters_tabular(
-            current_Q_star, r_theta, p_theta_logits, r_true, p_true, gamma, lr_theta
+        current_Q_star = find_Q_star_tabular(
+            r_theta, p_theta_logits, gamma, alpha_softmax, Q_init=current_Q_star
         )
 
-        if not success: # If Jacobian inversion failed
+        # Step 2: Outer Loop - Update model parameters theta using Implicit Differentiation
+        updated_r_theta, updated_p_theta_logits, success = (
+            update_model_parameters_tabular(
+                current_Q_star, r_theta, p_theta_logits, r_true, p_true, gamma, lr_theta
+            )
+        )
+
+        if not success:  # If Jacobian inversion failed
             print("Training halted due to an issue in model parameter update.")
             break
 
@@ -400,14 +455,17 @@ def run_omd_tabular_training(num_outer_loops, lr_theta):
     print("\n--- Training Complete ---")
     print(f"Final r_theta:\n{r_theta}")
     print(f"Final p_theta (from logits):\n{softmax_p_logits(p_theta_logits)}")
-    final_Q_star = find_Q_star_tabular(r_theta, p_theta_logits, gamma, alpha_softmax, Q_init=current_Q_star)
+    final_Q_star = find_Q_star_tabular(
+        r_theta, p_theta_logits, gamma, alpha_softmax, Q_init=current_Q_star
+    )
     print(f"Final Q*:\n{final_Q_star}")
     print(f"Final L_true: {compute_Ltrue(final_Q_star, r_true, p_true, gamma):.6f}")
 
+
 # --- Example Usage ---
 # Hyperparameters for the training process
-NUM_OUTER_LOOPS = 100 # Number of times to update the model parameters (theta)
-LEARNING_RATE_THETA = 0.01 # Step size for gradient descent on model parameters
+NUM_OUTER_LOOPS = 100  # Number of times to update the model parameters (theta)
+LEARNING_RATE_THETA = 0.01  # Step size for gradient descent on model parameters
 
 # Execute the training
 run_omd_tabular_training(NUM_OUTER_LOOPS, LEARNING_RATE_THETA)
@@ -427,7 +485,7 @@ In the context of OMD for tabular MDPs, calculating the "gradient" ∇Ltrue(θ) 
 
 # %% [code]
 import numpy as np
-import copy # Needed for deep copying the q_table
+import copy  # Needed for deep copying the q_table
 
 ## "Algorithm 1: Model Based RL with OMD Input:"
 ## "Initial parameters w, θ, empty replay buffer D."
@@ -441,43 +499,58 @@ tau = 0.005
 # Initialize the primary Q-table (w)
 # (Assuming q_table, states, actions, etc. are already defined or imported from elsewhere)
 # For demonstration, let's define dummy ones here:
-states = ['s1', 's2', 's3']
-actions = ['a1', 'a2']
+states = ["s1", "s2", "s3"]
+actions = ["a1", "a2"]
 q_table = {s: {a: np.random.rand() for a in actions} for s in states}
 # Initialize the target Q-table (w̄) as a deep copy of the primary Q-table
 target_q_table = copy.deepcopy(q_table)
 
 # Dummy models and parameters for the rest of the code to run
-max_iterations = 10 # Outer loop iterations
-k = 5 # Inner loop optimization steps
-gamma = 0.99 # Discount factor
-learning_rate = 0.01 # For updating q_table
+max_iterations = 10  # Outer loop iterations
+k = 5  # Inner loop optimization steps
+gamma = 0.99  # Discount factor
+learning_rate = 0.01  # For updating q_table
 
 # Dummy true reward and probability models (for environment interaction and experience collection)
 rewards = {
-    's1': {'a1': 1.0, 'a2': 0.5},
-    's2': {'a1': -0.1, 'a2': 1.0},
-    's3': {'a1': 0.2, 'a2': -0.5}
+    "s1": {"a1": 1.0, "a2": 0.5},
+    "s2": {"a1": -0.1, "a2": 1.0},
+    "s3": {"a1": 0.2, "a2": -0.5},
 }
 probs = {
-    's1': {'a1': {'s1': 0.8, 's2': 0.2}, 'a2': {'s1': 0.1, 's2': 0.9}},
-    's2': {'a1': {'s1': 0.5, 's2': 0.5}, 'a2': {'s1': 0.9, 's2': 0.1}},
-    's3': {'a1': {'s1': 0.7, 's3': 0.3}, 'a2': {'s2': 0.6, 's3': 0.4}}
+    "s1": {"a1": {"s1": 0.8, "s2": 0.2}, "a2": {"s1": 0.1, "s2": 0.9}},
+    "s2": {"a1": {"s1": 0.5, "s2": 0.5}, "a2": {"s1": 0.9, "s2": 0.1}},
+    "s3": {"a1": {"s1": 0.7, "s3": 0.3}, "a2": {"s2": 0.6, "s3": 0.4}},
 }
 
 # Dummy model-based reward and probability models (θ)
 # These are used to calculate the Bellman target (BθQw̄)
-rewards_theta = copy.deepcopy(rewards) # In a real setting, these would be learned models
-probs_theta = copy.deepcopy(probs) # In a real setting, these would be learned models
+rewards_theta = copy.deepcopy(
+    rewards
+)  # In a real setting, these would be learned models
+probs_theta = copy.deepcopy(probs)  # In a real setting, these would be learned models
+
 
 def get_softmax_policies(s, actions, q_table):
     """Calculates softmax probabilities for actions given a state and Q-table."""
     q_values_for_state = np.array([q_table[s][a] for a in actions])
-    exp_q = np.exp(q_values_for_state - np.max(q_values_for_state)) # Numerical stability
+    exp_q = np.exp(
+        q_values_for_state - np.max(q_values_for_state)
+    )  # Numerical stability
     probs = exp_q / np.sum(exp_q)
     return {s: {action: prob for action, prob in zip(actions, probs)}}
 
-def soft_bellman(s, a, probs_model, rewards_model, all_states, all_actions, q_values_for_target_network, gamma):
+
+def soft_bellman(
+    s,
+    a,
+    probs_model,
+    rewards_model,
+    all_states,
+    all_actions,
+    q_values_for_target_network,
+    gamma,
+):
     """
     Calculates the soft Bellman optimality operator.
     Crucially, it uses the 'q_values_for_target_network' (representing Qw̄)
@@ -489,7 +562,12 @@ def soft_bellman(s, a, probs_model, rewards_model, all_states, all_actions, q_va
     # Iterate over possible next states and their probabilities from the *model*
     for s_prime_next, prob_s_prime_next in probs_model[s][a].items():
         # Get Q-values for all actions in the next state using the *target_q_table*
-        q_values_next_state = np.array([q_values_for_target_network[s_prime_next][a_prime] for a_prime in all_actions])
+        q_values_next_state = np.array(
+            [
+                q_values_for_target_network[s_prime_next][a_prime]
+                for a_prime in all_actions
+            ]
+        )
 
         # Calculate log-sum-exp using the trick for numerical stability
         max_q = np.max(q_values_next_state)
@@ -498,6 +576,7 @@ def soft_bellman(s, a, probs_model, rewards_model, all_states, all_actions, q_va
         expected_log_sum_exp += prob_s_prime_next * log_sum_exp_term
 
     return reward_term + gamma * expected_log_sum_exp
+
 
 def update_q_table(q_table_to_update, sampled_s, sampled_a, bellman_target, lr):
     """
@@ -509,14 +588,15 @@ def update_q_table(q_table_to_update, sampled_s, sampled_a, bellman_target, lr):
     error = current_q_value - bellman_target
     q_table_to_update[sampled_s][sampled_a] -= lr * error
 
+
 # --- Main RL loop ---
-d = {} # Empty replay buffer
+d = {}  # Empty replay buffer
 for ir in range(0, max_iterations):
     ## "Set s to be the current state."
     if ir == 0:
         s = np.random.choice(states)
     else:
-        s = s_prime # s_prime from the previous environment interaction
+        s = s_prime  # s_prime from the previous environment interaction
 
     ## "Sample an action a using softmax over Qw(s, a)."
     # Note: This uses the current (online) q_table (w) for policy generation
@@ -540,7 +620,7 @@ for ir in range(0, max_iterations):
     ## for i = 1 to K do
     ## "We make K steps of an optimization method to approximate w∗ = φ(θ) where K is
     ## a hyperparameter and reuse the weights from the previous outer loop iterations."
-    for ik in range(0, k): # Loop for K optimization steps of Qw
+    for ik in range(0, k):  # Loop for K optimization steps of Qw
         ## "Sample (s, a) from buffer D."
         # This experience (s, a) is from the true environment.
         d_index = np.random.choice(list(d.keys()))
@@ -573,7 +653,9 @@ for ir in range(0, max_iterations):
     for s_key in states:
         for a_key in actions:
             # target_q_table_new_value = (1 - tau) * target_q_table_old_value + tau * q_table_current_value
-            target_q_table[s_key][a_key] = (1 - tau) * target_q_table[s_key][a_key] + tau * q_table[s_key][a_key]
+            target_q_table[s_key][a_key] = (1 - tau) * target_q_table[s_key][
+                a_key
+            ] + tau * q_table[s_key][a_key]
 
     ## "Update model parameters θ according to (14)."
     # This part of Algorithm 1 (updating theta) is not implemented in your snippet.
