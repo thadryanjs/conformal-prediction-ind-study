@@ -496,7 +496,6 @@ print("Q_cd_soft:\n", Q_cd_soft)
 print("soft_policy_cd_from_softQ:\n", soft_policy_cd_from_softQ)
 
 
-# %% [code]
 # -------------------------
 # Optionally run your OMD trainer on card-draw (if available)
 # -------------------------
