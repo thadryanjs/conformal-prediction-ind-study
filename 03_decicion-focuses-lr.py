@@ -1,17 +1,18 @@
+
 # ---
 # jupyter:
-#   jupytext:
-#     cell_metadata_filter: -all
-#     formats: ipynb,py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.17.2
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
+#   jupytext:
+#     cell_metadata_filter: -all
+#     formats: ipynb,py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.17.2
+#   kernelspec:
+#     display_name: Python 3 (ipykernel)
+#     language: python
+#     name: python3
 # ---
 
 
@@ -20,23 +21,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-# Check for GPU and set device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-states = [0, 1]
-actions = [0, 1]
-
-# Rewards: R(s, a)
-rewards = torch.tensor(
-    [[-0.45, 0.50], [-0.10, 0.50]], dtype=torch.float32, device=device
-)
-
-# Probs: P(s' | s, a)
-probs = torch.tensor(
-    [[[0.7, 0.3], [0.2, 0.8]], [[0.99, 0.01], [0.99, 0.01]]],
-    dtype=torch.float32,
-    device=device,
-)
 
 max_iterations = 1000
 gamma = 0.5
@@ -112,18 +96,6 @@ def soft_bellman_buffer_target(
 
 
 # set a seed
-torch.manual_seed(8675309)
-np.random.seed(8675309)
-
-# We need parameters as torch Tensors with requires_grad=True
-q_table = torch.rand(len(states), len(actions), requires_grad=True, device=device)
-target_q_table = q_table.clone().detach()
-
-rewards_theta = torch.rand(len(states), len(actions), requires_grad=True, device=device)
-probs_alpha = torch.rand(
-    len(states), len(actions), len(states), requires_grad=True, device=device
-)
-
 
 # %% [code]
 def update_q_step_differentiable(
@@ -396,354 +368,66 @@ def train_omd(
     return q_table.detach(), rewards_theta.detach(), F.softmax(probs_alpha, dim=-1).detach(), d
 
 
-# %% [code]
-d = {}
-for ir in range(max_iterations):
-    if ir == 0:
-        s = int(np.random.choice(states))
-    else:
-        s = s_prime
-    action_probs = get_softmax_policies(states, actions, q_table)
-    p_values = np.array(list(action_probs[s].values()), dtype=float)
-    p_values /= p_values.sum()
-    a = int(np.random.choice(actions, p=p_values))
-    r = rewards[s, a].item()
-    current_trans_probs = probs[s, a, :].cpu().numpy()
-    current_trans_probs /= current_trans_probs.sum()
-    s_prime = int(np.random.choice(states, p=current_trans_probs))
-    d[ir] = {"s": s, "a": a, "r": r, "s_prime": s_prime}
 
-    # 2) fast inner-loop used for acting/training (non-differentiable in-place)
-    probs_learned_now = F.softmax(probs_alpha, dim=-1)
-    for ik in range(k):
-        # sample a transition to update Q (in-place, fast)
-        d_index = np.random.choice(list(d.keys()))
-        d_entry = d[d_index]
-        ds, da = d_entry["s"], d_entry["a"]
-        q_bellman = soft_bellman_model_expected(
-            ds, da, probs_learned_now, rewards_theta, target_q_table, gamma
-        )
-        # use the non-differentiable elementwise update for the live q_table
-        with torch.no_grad():
-            q_table[ds, da] -= inner_lr * 2.0 * (q_table[ds, da] - q_bellman.detach())
+# [inactive delimiter] [code]
+torch.manual_seed(8675309)
+np.random.seed(8675309)
 
-    update_q_table_ema(q_table, target_q_table, tau)
+# Check for GPU and set device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # 4) Accurate meta-update: construct a differentiable q_inner by unrolling K differentiable steps
-    #    Start from a detached copy of current q_table, but require grad so autograd records the path
-    q_inner = q_table.clone().detach().requires_grad_(True)
-    for ik in range(k):
-        # sample a transition (can be the same sampling scheme)
-        d_index = np.random.choice(list(d.keys()))
-        d_entry = d[d_index]
-        ds, da = d_entry["s"], d_entry["a"]
-        q_inner = update_q_step_differentiable(
-            q_inner, ds, da, probs_alpha, rewards_theta, gamma, inner_lr
-        )
-    # Now q_inner encodes the differentiable K-step optimization path
+states = [0, 1]
+actions = [0, 1]
 
-    # 5) call update_theta which expects a differentiable q_inner for accurate Eq. (14)
-    update_theta(
-        rewards_theta,
-        probs_alpha,
-        probs,  # true probs (used only for reference in some variants)
-        rewards,
-        states,
-        actions,
-        q_inner,  # pass differentiable q_inner here
-        target_q_table,
-        gamma,
-        d,
-        n_meta_iterations,
-        learning_rate,
-    )
+# Rewards: R(s, a)
+rewards = torch.tensor(
+    [[-0.45, 0.50], [-0.10, 0.50]], dtype=torch.float32, device=device
+)
+
+# Probs: P(s' | s, a)
+probs = torch.tensor(
+    [[[0.7, 0.3], [0.2, 0.8]], [[0.99, 0.01], [0.99, 0.01]]],
+    dtype=torch.float32,
+    device=device,
+)
+# We need parameters as torch Tensors with requires_grad=True
+q_table = torch.rand(len(states), len(actions), requires_grad=True, device=device)
+target_q_table = q_table.clone().detach()
+
+rewards_theta = torch.rand(len(states), len(actions), requires_grad=True, device=device)
+probs_alpha = torch.rand(
+    len(states), len(actions), len(states), requires_grad=True, device=device
+)
 
 
-# %% [code]
-print("Training finished.\n")
-
-# Final Q and learned model
-print("Final Q-table (detached):")
-print(q_table.detach().cpu().numpy())
-
-print("\nFinal learned reward parameters (rewards_theta):")
-print(rewards_theta.detach().cpu().numpy())
-
-print("\nTrue reward parameters:")
-print(rewards.cpu().numpy())
-
-probs_learned = F.softmax(probs_alpha, dim=-1).detach()
-print("\nFinal learned transition probabilities (probs softmaxed):")
-print(probs_learned.cpu().numpy())
-
-print("\nTrue transition probabilities:")
-print(probs.cpu().numpy())
-
-# Greedy policy from final Q
-print("\nGreedy policy from final Q-table:")
-for s in states:
-    greedy_a = int(torch.argmax(q_table[s]).item())
-    print(f"  State {s}: take action {greedy_a}")
-
-# Small evaluation using greedy policy on the true environment
-def evaluate_policy_greedy(policy_q, env_probs, env_rewards, n_episodes=50, max_steps=50, gamma_eval=0.99):
-    total_returns = []
-    for ep in range(n_episodes):
-        s = int(np.random.choice(states))
-        G = 0.0
-        discount = 1.0
-        for t in range(max_steps):
-            a = int(torch.argmax(policy_q[s]).item())
-            r = float(env_rewards[s, a].cpu().numpy())
-            trans = env_probs[s, a, :].cpu().numpy()
-            trans = trans / trans.sum()
-            s = int(np.random.choice(states, p=trans))
-            G += discount * r
-            discount *= gamma_eval
-        total_returns.append(G)
-    return np.mean(total_returns), np.std(total_returns)
-
-mean_ret, std_ret = evaluate_policy_greedy(q_table.detach(), probs, rewards, n_episodes=100, max_steps=50)
-print(f"\nEvaluation of greedy policy on true MDP over 100 episodes: mean return = {mean_ret:.3f}, std = {std_ret:.3f}")
-
-# Diagnostics: MSE between learned and true rewards, and between learned and true transition probs
-mse_rewards = torch.mean((rewards_theta.detach() - rewards)**2).item()
-mse_probs = torch.mean((probs_learned - probs.detach())**2).item()
-print(f"\nDiagnostics:")
-print(f"  MSE(rewards): {mse_rewards:.6f}")
-print(f"  MSE(transition probs): {mse_probs:.6f}")
-
-# Optional: show per-(s,a) errors
-print("\nPer (state,action) errors (rewards, transition L2):")
-for s in states:
-    for a in actions:
-        r_err = (rewards_theta.detach()[s,a] - rewards[s,a]).item()
-        p_err = torch.norm(probs_learned[s,a,:] - probs[s,a,:]).item()
-        print(f"  (s={s}, a={a}): reward_err = {r_err:.4f}, trans_L2 = {p_err:.4f}")
-
-print("\nDone.")
+max_iterations = 1000
+K = 10
+inner_lr = 0.01
+meta_lr = 0.01
+tau = 0.001
+n_meta_iterations = 100
+seed = 8675309
 
 
-
-
-# %% [code]
-def train_omd(
+# use the function
+q_table, rewards_theta, probs_alpha, d = train_omd(
     states,
     actions,
-    probs_true,         # torch.tensor shape [S, A, S], true transitions
-    rewards_true,       # torch.tensor shape [S, A], true rewards
-    max_iterations=1000,
-    K=10,
-    inner_lr=0.01,
-    meta_lr=0.01,
-    tau=0.001,
-    n_meta_iterations=100,
-    device=torch.device("cpu"),
-    seed=8675309,
-):
-
-    """
-    Train OMD on a given tabular MDP using Option B (differentiable inner-loop unroll).
-    Returns learned q_table, rewards_theta, probs_alpha, replay buffer d.
-    """
-
-    import numpy as np
-    import torch
-    import torch.nn.functional as F
-
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-
-    S = len(states)
-    A = len(actions)
-
-    # Initialize parameters
-    q_table = torch.randn(S, A, device=device, requires_grad=True)
-    target_q_table = q_table.detach().clone()
-
-    rewards_theta = torch.randn(S, A, device=device, requires_grad=True) * 0.1
-    probs_alpha = torch.randn(S, A, S, device=device, requires_grad=True) * 0.1
-
-    # Outer optimizer for theta
-    theta_optimizer = torch.optim.Adam([rewards_theta, probs_alpha], lr=meta_lr)
-
-    # replay buffer
-    d = {}
-
-    # helper locals
-    probs_true_np = None
-    if isinstance(probs_true, torch.Tensor):
-        probs_true_np = probs_true.cpu().numpy()
-    else:
-        probs_true_np = np.array(probs_true)
-
-    # main loop
-    for ir in range(max_iterations):
-        # sample/advance state
-        if ir == 0:
-            s = int(np.random.choice(states))
-        else:
-            s = s_prime
-
-        # get action from softmax policy
-        action_probs = get_softmax_policies(states, actions, q_table)
-        p_values = np.array(list(action_probs[s].values()), dtype=float)
-        p_values /= p_values.sum()
-        a = int(np.random.choice(actions, p=p_values))
-
-        # step true MDP: sample next state using probs_true
-        trans = probs_true_np[s, a, :].astype(float)
-        trans /= trans.sum()
-        s_prime = int(np.random.choice(states, p=trans))
-        r = float(rewards_true[s, a].item())
-
-        # store transition
-        d[ir] = {"s": s, "a": a, "r": r, "s_prime": s_prime}
-
-        # fast in-place inner updates for live q_table
-        probs_learned_now = F.softmax(probs_alpha, dim=-1)
-        for ik in range(K):
-            idx = np.random.choice(list(d.keys()))
-            entry = d[idx]
-            ds, da = entry["s"], entry["a"]
-            q_bellman = soft_bellman_model_expected(ds, da, probs_learned_now, rewards_theta, target_q_table, gamma=0.5)
-            with torch.no_grad():
-                q_table[ds, da] -= inner_lr * 2.0 * (q_table[ds, da] - q_bellman.detach())
-
-        # EMA update for target Q
-        update_q_table_ema(q_table, target_q_table, tau)
-
-        # Differentiable unroll to build q_inner
-        q_inner = q_table.clone().detach().requires_grad_(True)
-        for ik in range(K):
-            idx = np.random.choice(list(d.keys()))
-            entry = d[idx]
-            ds, da = entry["s"], entry["a"]
-            q_inner = update_q_step_differentiable(q_inner, ds, da, probs_alpha, rewards_theta, gamma=0.5, inner_lr=inner_lr)
-
-        # accurate meta-update (update_theta must use theta_optimizer or accept optimizer args)
-        update_theta(
-            rewards_theta,
-            probs_alpha,
-            probs_true,
-            rewards_true,
-            states,
-            actions,
-            q_inner,
-            target_q_table,
-            gamma=0.5,
-            d=d,
-            n_meta_iterations=n_meta_iterations,
-            learning_rate=meta_lr,   # if update_theta creates its own optimizer
-        )
-
-        # optionally step a provided optimizer if you pass it in; here update_theta handles stepping.
-
-    return q_table.detach(), rewards_theta.detach(), F.softmax(probs_alpha, dim=-1).detach(), d
-
-
-
-
+    probs,
+    rewards,
+    max_iterations=max_iterations,
+    K=K,
+    inner_lr=inner_lr,
+    meta_lr=meta_lr,
+    tau=tau,
+    n_meta_iterations=n_meta_iterations,
+    device=device,
+    seed=seed,
+)
 
 
 # %% [code]
-import numpy as np
-import torch
-
-# --- hyperparams for evaluation
-eval_episodes = 200
-max_steps = 100
-gamma_eval = gamma  # use same discount as training
-
-# Convert tensors to numpy for DP
-P = probs.cpu().numpy()       # shape [S, A, S]
-R = rewards.cpu().numpy()     # shape [S, A]
-S = len(states)
-A = len(actions)
-
-# Value iteration to compute optimal V* and optimal Q*
-def value_iteration(P, R, gamma, tol=1e-8, max_iter=10000):
-    S, A, _ = P.shape
-    V = np.zeros(S)
-    for it in range(max_iter):
-        V_prev = V.copy()
-        Q = np.zeros((S, A))
-        for s in range(S):
-            for a in range(A):
-                Q[s, a] = R[s, a] + gamma * (P[s, a, :] @ V_prev)
-        V = np.max(Q, axis=1)
-        if np.max(np.abs(V - V_prev)) < tol:
-            break
-    # derive optimal policy (greedy wrt Q)
-    pi_star = np.argmax(Q, axis=1)
-    return V, Q, pi_star
-
-V_star, Q_star, pi_star = value_iteration(P, R, gamma_eval)
-
-# Evaluate a policy on true MDP
-def eval_policy_on_true(policy_q_tensor, P_true, R_true, n_episodes=100, max_steps=100, gamma=0.99):
-    # policy_q_tensor: torch tensor [S,A] or numpy policy (if numpy, interpret as greedy)
-    # We'll evaluate greedy policy from Q if tensor provided
-    if isinstance(policy_q_tensor, torch.Tensor):
-        policy_q = policy_q_tensor.detach().cpu().numpy()
-        # use greedy policy
-        policy = np.argmax(policy_q, axis=1)
-    else:
-        policy = np.array(policy_q_tensor)
-
-    returns = []
-    for ep in range(n_episodes):
-        s = np.random.choice(S)
-        G = 0.0
-        discount = 1.0
-        for t in range(max_steps):
-            a = int(policy[s])
-            r = float(R_true[s, a])
-            next_p = P_true[s, a, :]
-            next_p = next_p / next_p.sum()
-            s = int(np.random.choice(S, p=next_p))
-            G += discount * r
-            discount *= gamma
-        returns.append(G)
-    return np.mean(returns), np.std(returns)
-
-# Evaluate optimal policy (pi_star) by simulation and compute its expected return analytically
-mean_opt_sim, std_opt_sim = eval_policy_on_true(pi_star, P, R, n_episodes=eval_episodes, max_steps=max_steps, gamma=gamma_eval)
-
-# Evaluate learned greedy policy from your final q_table
-mean_learned_sim, std_learned_sim = eval_policy_on_true(q_table.detach(), P, R, n_episodes=eval_episodes, max_steps=max_steps, gamma=gamma_eval)
-
-# Also compute expected return of policies from stationary distribution starting states if needed.
-# Print summary
-print("=== Comparison to true MDP optimal policy ===")
-print(f"Optimal policy (via value iteration) greedy returns (simulated over {eval_episodes} eps): mean={mean_opt_sim:.4f}, std={std_opt_sim:.4f}")
-print(f"Learned greedy policy returns (simulated over {eval_episodes} eps): mean={mean_learned_sim:.4f}, std={std_learned_sim:.4f}")
-gap = mean_opt_sim - mean_learned_sim
-fraction = mean_learned_sim / mean_opt_sim if mean_opt_sim != 0 else float('nan')
-print(f"Absolute gap: {gap:.4f}; Fraction of optimal: {fraction*100:.2f}%")
-print("\nOptional: show Q* and learned Q (detached):")
-print("Q* (optimal Q):\n", Q_star)
-print("Learned Q (detached):\n", q_table.detach().cpu().numpy())
-
-"""
-These results show the learned greedy policy achieves exactly the same episode returns as the optimal greedy policy (mean 1.0, gap 0.0, 100% of optimal). A few brief points to interpret what that means and any caveats:
-
-Policy performance: The greedy policy derived from your learned Q achieves the optimal return in the true MDP (by your simulation). So in terms of control performance, your agent found an optimal policy.
-Q-values mismatch: The learned Q differs from Q* (the optimal action-value function). That’s OK and expected in some cases:
-Multiple Q-functions can induce the same greedy policy (value-equivalent models). The outer objective (returns) only depends on the policy, not on the exact Q-values.
-Your learned Q may be offset or scaled relative to Q*, or it may overestimate values while preserving action ordering. What matters for greedy actions is argmax, not absolute Q numbers.
-Why this can happen:
-The model (θ) is learned to produce useful Bellman targets for control (OMD), not to match the true dynamics or true Q-values exactly. As the paper discusses, a control-oriented model can yield useful (even low-likelihood) predictions that produce good targets for value learning.
-If you used soft (entropy-regularized) Bellman or softmax policies during training, Q magnitudes can differ from hard-optimal Q* while still yielding the same greedy actions.
-Checks you can run (optional, quick):
-Verify greedy action ordering equals Q* argmax(s):
-For each state s check torch.argmax(Q_learned[s]) == torch.argmax(Q_star[s]).
-Inspect advantage gaps: Q(s, a_best) − Q(s, a_other) for learned vs optimal to see margin sizes.
-Evaluate robustness: run noisy or perturbed starts to ensure the policy’s performance generalizes.
-Conclusion: Even though the learned Q-table values are not numerically equal to Q*, your learned policy attains the optimal return — so you have successfully captured the reward-relevant structure. If you’d like, I can:
-
-Add code to compare argmaxes and advantage margins.
-Show how to compute exact expected returns analytically (not via simulation) for this small MDP.
-Help adjust training if you prefer the learned Q to better match Q* numerically (e.g., add a regularizer or change losses). Which would you like?
-
-"""
+print(q_table)
+print(rewards_theta)
+print(probs_alpha)
+print(d)
