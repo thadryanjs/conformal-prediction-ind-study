@@ -281,7 +281,122 @@ def update_theta(
 
 
 # %% [code]
-## "Algorithm 1: Model Based RL with OMD Input:"
+def train_omd(
+    states,
+    actions,
+    probs_true,         # torch.tensor shape [S, A, S], true transitions
+    rewards_true,       # torch.tensor shape [S, A], true rewards
+    max_iterations=1000,
+    K=10,
+    inner_lr=0.01,
+    meta_lr=0.01,
+    tau=0.001,
+    n_meta_iterations=100,
+    device=torch.device("cpu"),
+    seed=8675309,
+):
+
+    """
+    Train OMD on a given tabular MDP using Option B (differentiable inner-loop unroll).
+    Returns learned q_table, rewards_theta, probs_alpha, replay buffer d.
+    """
+
+    import numpy as np
+    import torch
+    import torch.nn.functional as F
+
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    S = len(states)
+    A = len(actions)
+
+    # Initialize parameters
+    q_table = torch.randn(S, A, device=device, requires_grad=True)
+    target_q_table = q_table.detach().clone()
+
+    rewards_theta = torch.randn(S, A, device=device, requires_grad=True) * 0.1
+    probs_alpha = torch.randn(S, A, S, device=device, requires_grad=True) * 0.1
+
+    # Outer optimizer for theta
+    theta_optimizer = torch.optim.Adam([rewards_theta, probs_alpha], lr=meta_lr)
+
+    # replay buffer
+    d = {}
+
+    # helper locals
+    probs_true_np = None
+    if isinstance(probs_true, torch.Tensor):
+        probs_true_np = probs_true.cpu().numpy()
+    else:
+        probs_true_np = np.array(probs_true)
+
+    # "Algorithm 1: Model Based RL with OMD Input:"
+    for ir in range(max_iterations):
+        # sample/advance state
+        if ir == 0:
+            s = int(np.random.choice(states))
+        else:
+            s = s_prime
+
+        # get action from softmax policy
+        action_probs = get_softmax_policies(states, actions, q_table)
+        p_values = np.array(list(action_probs[s].values()), dtype=float)
+        p_values /= p_values.sum()
+        a = int(np.random.choice(actions, p=p_values))
+
+        # step true MDP: sample next state using probs_true
+        trans = probs_true_np[s, a, :].astype(float)
+        trans /= trans.sum()
+        s_prime = int(np.random.choice(states, p=trans))
+        r = float(rewards_true[s, a].item())
+
+        # store transition
+        d[ir] = {"s": s, "a": a, "r": r, "s_prime": s_prime}
+
+        # fast in-place inner updates for live q_table
+        probs_learned_now = F.softmax(probs_alpha, dim=-1)
+        for ik in range(K):
+            idx = np.random.choice(list(d.keys()))
+            entry = d[idx]
+            ds, da = entry["s"], entry["a"]
+            q_bellman = soft_bellman_model_expected(ds, da, probs_learned_now, rewards_theta, target_q_table, gamma=0.5)
+            with torch.no_grad():
+                q_table[ds, da] -= inner_lr * 2.0 * (q_table[ds, da] - q_bellman.detach())
+
+        # EMA update for target Q
+        update_q_table_ema(q_table, target_q_table, tau)
+
+        # Differentiable unroll to build q_inner
+        q_inner = q_table.clone().detach().requires_grad_(True)
+        for ik in range(K):
+            idx = np.random.choice(list(d.keys()))
+            entry = d[idx]
+            ds, da = entry["s"], entry["a"]
+            q_inner = update_q_step_differentiable(q_inner, ds, da, probs_alpha, rewards_theta, gamma=0.5, inner_lr=inner_lr)
+
+        # accurate meta-update (update_theta must use theta_optimizer or accept optimizer args)
+        update_theta(
+            rewards_theta,
+            probs_alpha,
+            probs_true,
+            rewards_true,
+            states,
+            actions,
+            q_inner,
+            target_q_table,
+            gamma=0.5,
+            d=d,
+            n_meta_iterations=n_meta_iterations,
+            learning_rate=meta_lr,   # if update_theta creates its own optimizer
+        )
+
+        # optionally step a provided optimizer if you pass it in; here update_theta handles stepping.
+
+    return q_table.detach(), rewards_theta.detach(), F.softmax(probs_alpha, dim=-1).detach(), d
+
+
+# %% [code]
 d = {}
 for ir in range(max_iterations):
     if ir == 0:
@@ -407,6 +522,127 @@ for s in states:
         print(f"  (s={s}, a={a}): reward_err = {r_err:.4f}, trans_L2 = {p_err:.4f}")
 
 print("\nDone.")
+
+
+
+
+# %% [code]
+def train_omd(
+    states,
+    actions,
+    probs_true,         # torch.tensor shape [S, A, S], true transitions
+    rewards_true,       # torch.tensor shape [S, A], true rewards
+    max_iterations=1000,
+    K=10,
+    inner_lr=0.01,
+    meta_lr=0.01,
+    tau=0.001,
+    n_meta_iterations=100,
+    device=torch.device("cpu"),
+    seed=8675309,
+):
+
+    """
+    Train OMD on a given tabular MDP using Option B (differentiable inner-loop unroll).
+    Returns learned q_table, rewards_theta, probs_alpha, replay buffer d.
+    """
+
+    import numpy as np
+    import torch
+    import torch.nn.functional as F
+
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    S = len(states)
+    A = len(actions)
+
+    # Initialize parameters
+    q_table = torch.randn(S, A, device=device, requires_grad=True)
+    target_q_table = q_table.detach().clone()
+
+    rewards_theta = torch.randn(S, A, device=device, requires_grad=True) * 0.1
+    probs_alpha = torch.randn(S, A, S, device=device, requires_grad=True) * 0.1
+
+    # Outer optimizer for theta
+    theta_optimizer = torch.optim.Adam([rewards_theta, probs_alpha], lr=meta_lr)
+
+    # replay buffer
+    d = {}
+
+    # helper locals
+    probs_true_np = None
+    if isinstance(probs_true, torch.Tensor):
+        probs_true_np = probs_true.cpu().numpy()
+    else:
+        probs_true_np = np.array(probs_true)
+
+    # main loop
+    for ir in range(max_iterations):
+        # sample/advance state
+        if ir == 0:
+            s = int(np.random.choice(states))
+        else:
+            s = s_prime
+
+        # get action from softmax policy
+        action_probs = get_softmax_policies(states, actions, q_table)
+        p_values = np.array(list(action_probs[s].values()), dtype=float)
+        p_values /= p_values.sum()
+        a = int(np.random.choice(actions, p=p_values))
+
+        # step true MDP: sample next state using probs_true
+        trans = probs_true_np[s, a, :].astype(float)
+        trans /= trans.sum()
+        s_prime = int(np.random.choice(states, p=trans))
+        r = float(rewards_true[s, a].item())
+
+        # store transition
+        d[ir] = {"s": s, "a": a, "r": r, "s_prime": s_prime}
+
+        # fast in-place inner updates for live q_table
+        probs_learned_now = F.softmax(probs_alpha, dim=-1)
+        for ik in range(K):
+            idx = np.random.choice(list(d.keys()))
+            entry = d[idx]
+            ds, da = entry["s"], entry["a"]
+            q_bellman = soft_bellman_model_expected(ds, da, probs_learned_now, rewards_theta, target_q_table, gamma=0.5)
+            with torch.no_grad():
+                q_table[ds, da] -= inner_lr * 2.0 * (q_table[ds, da] - q_bellman.detach())
+
+        # EMA update for target Q
+        update_q_table_ema(q_table, target_q_table, tau)
+
+        # Differentiable unroll to build q_inner
+        q_inner = q_table.clone().detach().requires_grad_(True)
+        for ik in range(K):
+            idx = np.random.choice(list(d.keys()))
+            entry = d[idx]
+            ds, da = entry["s"], entry["a"]
+            q_inner = update_q_step_differentiable(q_inner, ds, da, probs_alpha, rewards_theta, gamma=0.5, inner_lr=inner_lr)
+
+        # accurate meta-update (update_theta must use theta_optimizer or accept optimizer args)
+        update_theta(
+            rewards_theta,
+            probs_alpha,
+            probs_true,
+            rewards_true,
+            states,
+            actions,
+            q_inner,
+            target_q_table,
+            gamma=0.5,
+            d=d,
+            n_meta_iterations=n_meta_iterations,
+            learning_rate=meta_lr,   # if update_theta creates its own optimizer
+        )
+
+        # optionally step a provided optimizer if you pass it in; here update_theta handles stepping.
+
+    return q_table.detach(), rewards_theta.detach(), F.softmax(probs_alpha, dim=-1).detach(), d
+
+
+
 
 
 
