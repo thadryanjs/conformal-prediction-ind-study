@@ -1,4 +1,3 @@
-
 # ---
 # jupyter:
 #   jupytext:
@@ -20,15 +19,6 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-
-
-max_iterations = 1000
-gamma = 0.5
-K = 10
-inner_lr = 0.01
-meta_lr = 0.01
-tau = 0.001
-n_meta_iterations = 100
 
 
 # %% [code]
@@ -95,8 +85,6 @@ def soft_bellman_buffer_target(
     return reward + gamma * log_sum_exp
 
 
-# set a seed
-
 # %% [code]
 def update_q_step_differentiable(
     q_table, ds, da, probs_alpha, rewards_theta, gamma, inner_lr
@@ -159,10 +147,10 @@ def update_theta(
     rewards_true,
     states,
     actions,
-    q_table,  # IMPORTANT: for accurate Eq.(14) this should be q_inner (differentiable) produced by K-step unroll
-    target_q_table,  # target Q used for buffer targets (detached EMA)
+    q_table,
+    target_q_table,
     gamma,
-    d,  # replay buffer dict
+    d,
     n_meta_iterations,
     learning_rate,
 ):
@@ -256,8 +244,8 @@ def update_theta(
 def train_omd(
     states,
     actions,
-    probs_true,         # torch.tensor shape [S, A, S], true transitions
-    rewards_true,       # torch.tensor shape [S, A], true rewards
+    probs_true,  # torch.tensor shape [S, A, S], true transitions
+    rewards_true,  # torch.tensor shape [S, A], true rewards
     probs_theta,
     rewards_theta,
     max_iterations=1000,
@@ -269,7 +257,6 @@ def train_omd(
     device=torch.device("cpu"),
     seed=8675309,
 ):
-
     """
     Train OMD on a given tabular MDP using Option B (differentiable inner-loop unroll).
     Returns learned q_table, rewards_theta, probs_alpha, replay buffer d.
@@ -327,9 +314,13 @@ def train_omd(
             idx = np.random.choice(list(d.keys()))
             entry = d[idx]
             ds, da = entry["s"], entry["a"]
-            q_bellman = soft_bellman_model_expected(ds, da, probs_learned_now, rewards_theta, target_q_table, gamma=0.5)
+            q_bellman = soft_bellman_model_expected(
+                ds, da, probs_learned_now, rewards_theta, target_q_table, gamma=0.5
+            )
             with torch.no_grad():
-                q_table[ds, da] -= inner_lr * 2.0 * (q_table[ds, da] - q_bellman.detach())
+                q_table[ds, da] -= (
+                    inner_lr * 2.0 * (q_table[ds, da] - q_bellman.detach())
+                )
 
         # EMA update for target Q
         update_q_table_ema(q_table, target_q_table, tau)
@@ -340,7 +331,15 @@ def train_omd(
             idx = np.random.choice(list(d.keys()))
             entry = d[idx]
             ds, da = entry["s"], entry["a"]
-            q_inner = update_q_step_differentiable(q_inner, ds, da, probs_alpha, rewards_theta, gamma=0.5, inner_lr=inner_lr)
+            q_inner = update_q_step_differentiable(
+                q_inner,
+                ds,
+                da,
+                probs_alpha,
+                rewards_theta,
+                gamma=0.5,
+                inner_lr=inner_lr,
+            )
 
         # accurate meta-update (update_theta must use theta_optimizer or accept optimizer args)
         update_theta(
@@ -355,13 +354,17 @@ def train_omd(
             gamma=0.5,
             d=d,
             n_meta_iterations=n_meta_iterations,
-            learning_rate=meta_lr,   # if update_theta creates its own optimizer
+            learning_rate=meta_lr,  # if update_theta creates its own optimizer
         )
 
         # optionally step a provided optimizer if you pass it in; here update_theta handles stepping.
 
-    return q_table.detach(), rewards_theta.detach(), F.softmax(probs_alpha, dim=-1).detach(), d
-
+    return (
+        q_table.detach(),
+        rewards_theta.detach(),
+        F.softmax(probs_alpha, dim=-1).detach(),
+        d,
+    )
 
 
 torch.manual_seed(8675309)
@@ -408,12 +411,12 @@ seed = 8675309
 
 # use the function
 q_table, rewards_theta, probs_alpha, d = train_omd(
-    states = states,
-    actions = actions,
-    probs_true = probs,
-    rewards_true = rewards,
-    probs_theta = probs_theta,
-    rewards_theta = rewards_theta,
+    states=states,
+    actions=actions,
+    probs_true=probs,
+    rewards_true=rewards,
+    probs_theta=probs_theta,
+    rewards_theta=rewards_theta,
     max_iterations=max_iterations,
     K=K,
     inner_lr=inner_lr,
@@ -426,4 +429,156 @@ q_table, rewards_theta, probs_alpha, d = train_omd(
 
 
 # %% [code]
+import torch
+import numpy as np
+import torch.nn.functional as F
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# -------------------------
+# Card-draw MDP (declarative)
+# -------------------------
+states_cd = [0, 1]
+actions_cd = [0, 1]  # 0: hold, 1: draw
+
+S_cd = len(states_cd)
+A_cd = len(actions_cd)
+
+# Rewards: R(s, a) shape [S, A]
+rewards_cd = torch.tensor(
+    [
+        [+1.0, 0.0],  # state 0: high card -> hold=+1, draw=0
+        [-1.0, 0.0],  # state 1: low card  -> hold=-1, draw=0
+    ],
+    dtype=torch.float32,
+    device=device,
+)
+
+# Probs: P(s' | s, a) shape [S, A, S]
+probs_cd = torch.zeros((S_cd, A_cd, S_cd), dtype=torch.float32, device=device)
+# hold -> stay in same state
+for s in states_cd:
+    probs_cd[s, 0, s] = 1.0
+# draw -> uniform over cards
+probs_cd[:, 1, :] = 0.5
+
+# Sanity checks
+assert rewards_cd.shape == (S_cd, A_cd)
+assert probs_cd.shape == (S_cd, A_cd, S_cd)
+assert torch.allclose(probs_cd.sum(dim=2), torch.ones((S_cd, A_cd), device=device))
+
+# Initial model params (leaf tensors) for possible OMD call
+probs_alpha_cd = torch.randn(
+    (S_cd, A_cd, S_cd), dtype=torch.float32, device=device, requires_grad=True
+)
+probs_alpha_cd.data.mul_(0.1)
+rewards_theta_cd = torch.randn(
+    (S_cd, A_cd), dtype=torch.float32, device=device, requires_grad=True
+)
+rewards_theta_cd.data.mul_(0.1)
+
+# Initial Q table (live) and target Q
+q_table_cd = torch.zeros(
+    (S_cd, A_cd), dtype=torch.float32, device=device, requires_grad=True
+)
+target_q_table_cd = q_table_cd.clone().detach()
+
+# Sanity checks for parameter leaves
+assert (
+    probs_alpha_cd.is_leaf and probs_alpha_cd.requires_grad
+), "probs_alpha_cd must be a leaf tensor"
+assert (
+    rewards_theta_cd.is_leaf and rewards_theta_cd.requires_grad
+), "rewards_theta_cd must be a leaf tensor"
+
+
+# -------------------------
+# Value Iteration solver (card-draw)
+# -------------------------
+def value_iteration_cd(
+    probs, rewards, gamma=0.95, tol=1e-8, max_iters=10000, soft=False
+):
+    """
+    If soft=False: standard value iteration using max over actions.
+    If soft=True: uses soft (log-sum-exp) backup.
+    Returns V (S,), Q (S,A), iters
+    """
+    S_loc, A_loc, _ = probs.shape
+    V = torch.zeros(S_loc, dtype=rewards.dtype, device=rewards.device)
+    Q = torch.zeros((S_loc, A_loc), dtype=rewards.dtype, device=rewards.device)
+    for it in range(max_iters):
+        V_prev = V.clone()
+        for s in range(S_loc):
+            for a in range(A_loc):
+                Q[s, a] = rewards[s, a] + gamma * torch.dot(probs[s, a, :], V_prev)
+        if soft:
+            V = torch.logsumexp(Q, dim=1)
+        else:
+            V, _ = torch.max(Q, dim=1)
+        if torch.max(torch.abs(V - V_prev)) < tol:
+            return V, Q, it + 1
+    return V, Q, max_iters
+
+
+def greedy_policy_from_Q_cd(Q):
+    return torch.argmax(Q, dim=1)
+
+
+def soft_policy_from_Q_cd(Q, temperature=1.0):
+    logits = Q / temperature
+    return F.softmax(logits, dim=1)
+
+
+# -------------------------
+# Run value iteration on card-draw
+# -------------------------
+gamma_cd = 0.05
+
+V_cd_opt, Q_cd_opt, iters_cd = value_iteration_cd(
+    probs_cd, rewards_cd, gamma=gamma_cd, soft=False
+)
+policy_cd_opt = greedy_policy_from_Q_cd(Q_cd_opt)
+soft_policy_cd_opt = soft_policy_from_Q_cd(Q_cd_opt, temperature=1.0)
+
+V_cd_soft, Q_cd_soft, iters_cd_soft = value_iteration_cd(
+    probs_cd, rewards_cd, gamma=gamma_cd, soft=True
+)
+soft_policy_cd_from_softQ = soft_policy_from_Q_cd(Q_cd_soft, temperature=1.0)
+
+print("Card-draw MDP (declarative) Value Iteration (hard max):")
+print("V_cd_opt:\n", V_cd_opt)
+print("Q_cd_opt:\n", Q_cd_opt)
+print("policy_cd_opt (greedy):\n", policy_cd_opt)
+print("soft_policy_cd_opt (from hard Q):\n", soft_policy_cd_opt)
+
+print("\nCard-draw MDP Value Iteration (soft backup):")
+print("V_cd_soft:\n", V_cd_soft)
+print("Q_cd_soft:\n", Q_cd_soft)
+print("soft_policy_cd_from_softQ:\n", soft_policy_cd_from_softQ)
+
+# -------------------------
+# Optionally run your OMD trainer on card-draw (if available)
+# -------------------------
+q_learned_cd, rewards_theta_learned_cd, probs_alpha_learned_cd, replay_buffer_cd = (
+    train_omd(
+        states=states_cd,
+        actions=actions_cd,
+        probs_true=probs_cd,
+        rewards_true=rewards_cd,
+        probs_theta=probs_alpha_cd,
+        rewards_theta=rewards_theta_cd,
+        max_iterations=200,
+        K=5,
+        inner_lr=0.05,
+        meta_lr=0.01,
+        tau=0.01,
+        n_meta_iterations=20,
+        device=device,
+        seed=42,
+    )
+)
+print("\nOMD results (card-draw):")
+print("q_learned_cd:\n", q_learned_cd)
+print("rewards_theta_learned_cd:\n", rewards_theta_learned_cd)
+print("probs_alpha_learned_cd (softmaxed):\n", probs_alpha_learned_cd)
+print("replay_buffer_cd size:", len(replay_buffer_cd))
