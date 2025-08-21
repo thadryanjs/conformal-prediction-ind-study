@@ -258,6 +258,8 @@ def train_omd(
     actions,
     probs_true,         # torch.tensor shape [S, A, S], true transitions
     rewards_true,       # torch.tensor shape [S, A], true rewards
+    probs_theta,
+    rewards_theta,
     max_iterations=1000,
     K=10,
     inner_lr=0.01,
@@ -282,13 +284,6 @@ def train_omd(
 
     S = len(states)
     A = len(actions)
-
-    # Initialize parameters
-    q_table = torch.randn(S, A, device=device, requires_grad=True)
-    target_q_table = q_table.detach().clone()
-
-    rewards_theta = torch.randn(S, A, device=device, requires_grad=True) * 0.1
-    probs_alpha = torch.randn(S, A, S, device=device, requires_grad=True) * 0.1
 
     # Outer optimizer for theta
     theta_optimizer = torch.optim.Adam([rewards_theta, probs_alpha], lr=meta_lr)
@@ -369,7 +364,6 @@ def train_omd(
 
 
 
-# [inactive delimiter] [code]
 torch.manual_seed(8675309)
 np.random.seed(8675309)
 
@@ -395,9 +389,12 @@ q_table = torch.rand(len(states), len(actions), requires_grad=True, device=devic
 target_q_table = q_table.clone().detach()
 
 rewards_theta = torch.rand(len(states), len(actions), requires_grad=True, device=device)
-probs_alpha = torch.rand(
+assert rewards_theta.is_leaf
+
+probs_theta = torch.rand(
     len(states), len(actions), len(states), requires_grad=True, device=device
 )
+assert probs_theta.is_leaf
 
 
 max_iterations = 1000
@@ -411,10 +408,12 @@ seed = 8675309
 
 # use the function
 q_table, rewards_theta, probs_alpha, d = train_omd(
-    states,
-    actions,
-    probs,
-    rewards,
+    states = states,
+    actions = actions,
+    probs_true = probs,
+    rewards_true = rewards,
+    probs_theta = probs_theta,
+    rewards_theta = rewards_theta,
     max_iterations=max_iterations,
     K=K,
     inner_lr=inner_lr,
@@ -427,7 +426,4 @@ q_table, rewards_theta, probs_alpha, d = train_omd(
 
 
 # %% [code]
-print(q_table)
-print(rewards_theta)
-print(probs_alpha)
-print(d)
+
