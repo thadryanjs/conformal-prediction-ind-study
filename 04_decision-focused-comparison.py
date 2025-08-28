@@ -29,21 +29,32 @@ import os
 # simple config
 config = {
     # general
-    "env_name": "FrozenLake-v1",
-    "seed_start": 1000,
-    "n_seeds": 30,
+    "re-run": True,
+    "env_params": {
+        "env_name": "FrozenLake-v1",
+        "env_kwargs": {
+            "map_name": "4x4",
+            "is_slippery": False
+        }
+    },
+
+    "n_seeds": 3,
 
     # training / algorithm
-    "max_iterations": 1200,
-    "K": 4,
-    "inner_lr": 0.05,
-    "meta_lr": 0.01,
-    "tau": 0.01,
-    "n_meta_iterations": 30,
-    "gamma": 0.95,
+    "omd_params": {
+        "max_iterations": 1200,
+        "K": 4,
+        "inner_lr": 0.05,
+        "meta_lr": 0.01,
+        "tau": 0.01,
+        "n_meta_iterations": 30,
+        "gamma": 0.95,
+    },
+
 
     # replay / evaluation
     "replay_capacity": 50000,
+    "max_iterations": 1200,
     "eval_episodes": 500,
 
     # device / runtime
@@ -53,16 +64,6 @@ config = {
     "out_dir": "outputs/decision-focused-learning",
     "csv_name": "omd-vs-empirical-frozenlake.csv",
     "boxplot_name": "boxplot.png",
-
-    # env-specific nested config (only FrozenLake for now)
-    "env_params": {
-        "FrozenLake-v1": {
-            "map_name": "4x4",
-            "is_slippery": True,
-            "max_episode_steps": 100,
-            # any other FrozenLake-specific options you want to store
-        }
-    },
 
     # model-specific options
     "model_params": {
@@ -484,19 +485,17 @@ def train_omd(
 # -------------------------
 #| export
 def batch_run(
-    env_name="FrozenLake-v1",
-    map_name="4x4",
-    is_slippery=True,
-    n_seeds=30,
-    max_iterations=1200,
-    eval_episodes=500,
+    env_params,
+    omd_params,
+    n_seeds,
+    eval_episodes,
 ):
     rows = []
     for i in range(n_seeds):
         seed = 1000 + i
-        env = gym.make(env_name, map_name=map_name, is_slippery=is_slippery)
+        env = gym.make(env_params["env_name"], **env_params["env_kwargs"])
         learned_P, learned_R, replay = train_omd(
-            env, seed, max_iterations=max_iterations
+            env, seed, **omd_params
         )
         pi_learned = compute_soft_policy_from_model(learned_P, learned_R, gamma=0.95)
         S = env.observation_space.n
@@ -554,24 +553,20 @@ def batch_run(
     return df
 
 
-out_dir = "outputs/decision-focused-learning"
+# main run
+out_dir = config["out_dir"]
 os.makedirs(out_dir, exist_ok=True)
 csv_path = os.path.join(out_dir, "omd-vs-empirical-frozenlake.csv")
 
-if config["env_params"]:
-    env_params_dict = config["env_params"]
 
 if config["re-run"]:
     df = batch_run(
-        env_name=config["env_name"],
-        map_name="4x4",
-        is_slippery=config["is_slippery"],
+        env_params=config["env_params"],
+        omd_params=config["omd_params"],
+        # I can ** these too
         n_seeds=config["n_seeds"],
-        max_iterations=config["max_iterations"],
         eval_episodes=config["eval_episodes"],
     )
-    print("\nSUMMARY")
-    print(df.describe())
     df.to_csv(csv_path, index=False)
 else:
     df = pd.read_csv(csv_path)
