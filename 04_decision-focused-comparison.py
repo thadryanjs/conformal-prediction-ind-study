@@ -14,7 +14,7 @@
 #     name: python3
 # ---
 
-# omd_gymnasium_runner.py
+# omd_gymnasium_evaluate.py
 import gymnasium as gym
 import numpy as np
 import torch
@@ -232,40 +232,210 @@ def train_omd_env(
 
     return q_table.detach(), rewards_theta.detach(), F.softmax(probs_theta, dim=-1).detach(), replay
 
+
 # --------------------------
-# Minimal example run (FrozenLake-v1 4x4)
+# Evaluation helpers
 # --------------------------
+def soft_value_iteration(probs, rewards, gamma=0.95, tol=1e-9, max_iters=10000):
+    S, A, _ = probs.shape
+    V = torch.zeros(S, dtype=rewards.dtype, device=rewards.device)
+    Q = torch.empty((S, A), dtype=rewards.dtype, device=rewards.device)
+    for i in range(max_iters):
+        V_prev = V
+        for s in range(S):
+            for a in range(A):
+                Q[s, a] = rewards[s, a] + gamma * torch.dot(probs[s, a], V_prev)
+        V = torch.logsumexp(Q, dim=1)
+        if torch.max(torch.abs(V - V_prev)) < tol:
+            break
+    return V, Q, F.softmax(Q, dim=1), i + 1
 
-# Create a Gymnasium environment (Discrete observations)
-env = gym.make("FrozenLake-v1", map_name="4x4", is_slippery=True)
+def fit_empirical_model_from_replay(replay, S, A):
+    counts = np.zeros((S, A, S), dtype=float)
+    rew_sum = np.zeros((S, A), dtype=float)
+    act_counts = np.zeros((S, A), dtype=float)
+    for (s, a, r, ns, done) in replay.buf:
+        counts[s, a, ns] += 1.0
+        rew_sum[s, a] += r
+        act_counts[s, a] += 1.0
+    P_hat = np.zeros_like(counts)
+    for s in range(S):
+        for a in range(A):
+            total = counts[s, a].sum()
+            if total > 0:
+                P_hat[s, a] = counts[s, a] / total
+            else:
+                P_hat[s, a] = np.ones(S) / float(S)
+    R_hat = np.zeros((S, A))
+    for s in range(S):
+        for a in range(A):
+            if act_counts[s, a] > 0:
+                R_hat[s, a] = rew_sum[s, a] / act_counts[s, a]
+            else:
+                R_hat[s, a] = 0.0
+    return torch.as_tensor(P_hat, dtype=torch.float32), torch.as_tensor(R_hat, dtype=torch.float32)
 
-S = env.observation_space.n
-A = env.action_space.n
-device = torch.device("cpu")
+def compute_soft_policy_from_model(P_torch, R_torch, gamma=0.99):
+    _, _, soft_pi, _ = soft_value_iteration(P_torch, R_torch, gamma=gamma)
+    return soft_pi
 
-# Initialize tabular params (requires_grad where appropriate)
-q_table = torch.rand(S, A, requires_grad=True, device=device)
-target_q_table = q_table.clone().detach()
-rewards_theta = torch.rand(S, A, requires_grad=True, device=device)
-probs_theta = torch.rand(S, A, S, requires_grad=True, device=device)
+def per_state_kl(p_true, p_est, eps=1e-12):
+    p_true = p_true.clamp(min=eps)
+    p_est = p_est.clamp(min=eps)
+    return torch.sum(p_true * (torch.log(p_true) - torch.log(p_est)), dim=1)
 
-q_learned, r_learned, p_learned, replay = train_omd_env(
-    env,
-    q_table,
-    target_q_table,
-    probs_theta,
-    rewards_theta,
-    max_iterations=500,
-    K=4,
-    inner_lr=0.05,
-    meta_lr=0.01,
-    tau=0.01,
-    n_meta_iterations=20,
-    gamma=0.95,
-    seed=42,
-    device=device,
-)
+def evaluate_policy(env, policy_probs, n_episodes=200, seed=0):
+    rng = np.random.RandomState(seed)
+    total_returns = []
+    for ep in range(n_episodes):
+        obs, _ = env.reset()
+        done = False
+        ep_ret = 0.0
+        while not done:
+            probs = policy_probs[obs]
+            if isinstance(probs, torch.Tensor):
+                probs = probs.cpu().numpy()
+            probs = np.array(probs, dtype=float)
+            probs = probs / (probs.sum() + 1e-12)
+            a = int(rng.choice(len(probs), p=probs))
+            next_obs, reward, terminated, truncated, info = env.step(a)
+            done = bool(terminated or truncated)
+            ep_ret += float(reward)
+            obs = next_obs
+        total_returns.append(ep_ret)
+    return float(np.mean(total_returns)), float(np.std(total_returns))
 
-print("Done. Replay size:", len(replay))
-print("Learned rewards (sample):\n", r_learned[:4, :])
-print("Learned P (sample slice):\n", p_learned[:2, :2, :5])
+# --------------------------
+# Main: train, fit baseline, compute policies, evaluate
+# --------------------------
+if __name__ == "__main__":
+    # Choose environment: FrozenLake 4x4 (Discrete). Set is_slippery=False for deterministic.
+    env = gym.make("FrozenLake-v1", map_name="4x4", is_slippery=False)
+
+    S = env.observation_space.n
+    A = env.action_space.n
+    device = torch.device("cpu")
+
+    # Initialize tabular params (learnable)
+    q_table = torch.rand(S, A, requires_grad=True, device=device)
+    target_q_table = q_table.clone().detach()
+    rewards_theta = torch.rand(S, A, requires_grad=True, device=device)
+    probs_theta = torch.rand(S, A, S, requires_grad=True, device=device)
+
+    # Train OMD on env
+    learned_q, learned_R, learned_P, replay = train_omd_env(
+        env,
+        q_table,
+        target_q_table,
+        probs_theta,
+        rewards_theta,
+        max_iterations=1500,
+        K=4,
+        inner_lr=0.05,
+        meta_lr=0.01,
+        tau=0.01,
+        n_meta_iterations=30,
+        gamma=0.95,
+        seed=42,
+        device=device,
+    )
+
+    print("\nTraining completed. Replay size:", len(replay))
+
+    # Learned model -> soft policy
+    pi_learned = compute_soft_policy_from_model(learned_P, learned_R, gamma=0.95)
+
+    # Empirical model fit from replay -> soft policy
+    P_hat, R_hat = fit_empirical_model_from_replay(replay, S, A)
+    pi_empirical = compute_soft_policy_from_model(P_hat, R_hat, gamma=0.95)
+
+    # True model (if available) -> soft policy
+    pi_true = None
+    if hasattr(env, "unwrapped") and hasattr(env.unwrapped, "P"):
+        P_true_arr = np.zeros((S, A, S), dtype=float)
+        R_true_arr = np.zeros((S, A), dtype=float)
+        for s in range(S):
+            for a in range(A):
+                for prob, ns, rew, done in env.unwrapped.P[s][a]:
+                    P_true_arr[s, a, ns] += prob
+                    R_true_arr[s, a] = rew
+        P_true = torch.as_tensor(P_true_arr, dtype=torch.float32)
+        R_true = torch.as_tensor(R_true_arr, dtype=torch.float32)
+        _, _, pi_true, _ = soft_value_iteration(P_true, R_true, gamma=0.95)
+
+    # Compute per-state KLs if true policy exists
+    if pi_true is not None:
+        kl_learn = per_state_kl(pi_true, pi_learned)
+        kl_emp = per_state_kl(pi_true, pi_empirical)
+        print("\nPer-state KL (true || learned):", kl_learn.numpy())
+        print("Per-state KL (true || empirical):", kl_emp.numpy())
+
+    # Evaluate policies by rollout
+    mean_learn, std_learn = evaluate_policy(env, pi_learned, n_episodes=500, seed=123)
+    mean_emp, std_emp = evaluate_policy(env, pi_empirical, n_episodes=500, seed=123)
+    print(f"\nLearned policy rollout mean return: {mean_learn:.4f} +- {std_learn:.4f}")
+    print(f"Empirical policy rollout mean return: {mean_emp:.4f} +- {std_emp:.4f}")
+
+    if pi_true is not None:
+        mean_true, std_true = evaluate_policy(env, pi_true, n_episodes=500, seed=123)
+        print(f"True policy rollout mean return: {mean_true:.4f} +- {std_true:.4f}")
+
+
+# here is the pseudo code I want to implement
+seeds = []
+omd_results = []
+mle_results = []
+
+for i in range(30):
+    # set a seed
+    env.seed(i)
+    seeds.append(i)
+
+    # train omd
+    omd_results.append(train_omd_env(
+        env,
+        q_table,
+        target_q_table,
+        probs_theta,
+        rewards_theta,
+        max_iterations=1500,
+        K=4,
+        inner_lr=0.05,
+        meta_lr=0.01,
+        tau=0.01,
+        n_meta_iterations=30,
+        gamma=0.95,
+        seed=42,
+        device=device,
+    ))
+
+    # train mle
+    mle_results.append(train_mle_env(
+        env,
+        q_table,
+        target_q_table,
+        probs_theta,
+        rewards_theta,
+        max_iterations=1500,
+        K=4,
+        inner_lr=0.05,
+        meta_lr=0.01,
+        tau=0.01,
+        n_meta_iterations=30,
+        gamma=0.95,
+        seed=42,
+        device=device,
+    ))
+
+df_results = pd.DataFrame({
+    "seed": seeds,
+    "omd_q": [r[0] for r in omd_results],
+    "omd_R": [r[1] for r in omd_results],
+    "omd_P": [r[2] for r in omd_results],
+    "omd_replay": [r[3] for r in omd_results],
+    "mle_q": [r[0] for r in mle_results],
+    "mle_R": [r[1] for r in mle_results],
+    "mle_P": [r[2] for r in mle_results],
+    "mle_replay": [r[3] for r in mle_results],
+})
+

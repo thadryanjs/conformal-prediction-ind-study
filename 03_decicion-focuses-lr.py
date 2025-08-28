@@ -451,11 +451,15 @@ rewards_cd = torch.tensor(
 probs_cd = torch.tensor(
     [
         # state 0: action 0 (hold), action 1 (draw)
-        [[1.0, 0.0],   # s=0, a=0 -> stay in 0
-         [0.5, 0.5]],  # s=0, a=1 -> draw -> uniform over {0,1}
+        [
+            [1.0, 0.0],  # s=0, a=0 -> stay in 0
+            [0.5, 0.5],
+        ],  # s=0, a=1 -> draw -> uniform over {0,1}
         # state 1: action 0 (hold), action 1 (draw)
-        [[0.0, 1.0],   # s=1, a=0 -> stay in 1
-         [0.5, 0.5]],  # s=1, a=1 -> draw -> uniform over {0,1}
+        [
+            [0.0, 1.0],  # s=1, a=0 -> stay in 1
+            [0.5, 0.5],
+        ],  # s=1, a=1 -> draw -> uniform over {0,1}
     ],
     dtype=torch.float32,
     device=device,
@@ -488,9 +492,12 @@ def soft_value_iteration(probs, rewards, gamma=0.95, tol=1e-8, max_iters=10000):
     soft_policy = F.softmax(Q, dim=1)
     return V, Q, soft_policy, i + 1
 
+
 # Example usage (assumes probs_cd and rewards_cd exist):
 gamma_cd = 0.95
-V_cd_soft, Q_cd_soft, soft_policy_cd_from_softQ, iters_cd_soft = soft_value_iteration(probs_cd, rewards_cd, gamma=gamma_cd)
+V_cd_soft, Q_cd_soft, soft_policy_cd_from_softQ, iters_cd_soft = soft_value_iteration(
+    probs_cd, rewards_cd, gamma=gamma_cd
+)
 print("V_cd_soft:\n", V_cd_soft)
 print("Q_cd_soft:\n", Q_cd_soft)
 print("soft_policy_cd_from_softQ:\n", soft_policy_cd_from_softQ)
