@@ -24,22 +24,18 @@ import torch.nn.functional as F
 from scipy import stats
 import os
 
+
 # %% [code]
-#| default_exp src.rl.omd
+# | default_exp src.rl.omd
 # simple config
 config = {
     # general
     "re-run": True,
     "env_params": {
         "env_name": "FrozenLake-v1",
-        "env_kwargs": {
-            "map_name": "4x4",
-            "is_slippery": False
-        }
+        "env_kwargs": {"map_name": "4x4", "is_slippery": False},
     },
-
     "n_seeds": 3,
-
     # training / algorithm
     "omd_params": {
         "max_iterations": 1200,
@@ -50,28 +46,22 @@ config = {
         "n_meta_iterations": 30,
         "gamma": 0.95,
     },
-
-
     # replay / evaluation
     "replay_capacity": 50000,
     "max_iterations": 1200,
     "eval_episodes": 500,
-
     # device / runtime
     "device": "cpu",
-
     # output paths
     "out_dir": "outputs/decision-focused-learning",
     "csv_name": "omd-vs-empirical-frozenlake.csv",
     "boxplot_name": "boxplot.png",
-
     # model-specific options
     "model_params": {
-        "probs_init": "random",   # "random" or "uniform"
+        "probs_init": "random",  # "random" or "uniform"
         "reward_init": "random",  # "random" or "zeros"
         "use_tabular_transitions": True,
     },
-
     # plotting / display
     "plot_dpi": 200,
     "plot_show": False,  # set True to call plt.show() in interactive use
@@ -81,7 +71,7 @@ config = {
 # -------------------------
 # SimpleReplay
 # -------------------------
-#| export
+# | export
 class SimpleReplay:
     """Tiny FIFO replay buffer storing (s,a,r,s',done)."""
 
@@ -106,7 +96,7 @@ class SimpleReplay:
 # -------------------------
 # Bellman helpers (with brief math comments)
 # -------------------------
-#| export
+# | export
 def soft_bellman_model_expected(s, a, probs_model, rewards_model, q_table, gamma):
     """
     Model-based soft Bellman expected target:
@@ -119,7 +109,7 @@ def soft_bellman_model_expected(s, a, probs_model, rewards_model, q_table, gamma
     return r_theta + gamma * expected_future
 
 
-#| export
+# | export
 def soft_bellman_buffer_target(
     ds, da, reward_from_buffer, next_state_from_buffer, done_flag, target_q_table, gamma
 ):
@@ -142,7 +132,7 @@ def soft_bellman_buffer_target(
     return reward + gamma * torch.logsumexp(next_q_values, dim=0)
 
 
-#| export
+# | export
 def update_q_step_differentiable(
     q_table, ds, da, probs_theta, rewards_theta, gamma, inner_lr
 ):
@@ -162,7 +152,7 @@ def update_q_step_differentiable(
     return q_new
 
 
-#| export
+# | export
 def update_q_table_ema(q_source, q_target, tau):
     """EMA update: q_target := (1-tau)*q_target + tau*q_source"""
     with torch.no_grad():
@@ -172,7 +162,7 @@ def update_q_table_ema(q_source, q_target, tau):
 # -------------------------
 # VJP meta-update (implicit differentiation)
 # -------------------------
-#| export
+# | export
 def update_theta_vjp(
     r_theta_param,
     p_alpha_param,
@@ -254,7 +244,7 @@ def update_theta_vjp(
 # -------------------------
 # Inner-loop in-place acting updates
 # -------------------------
-#| export
+# | export
 def update_q_table_inplace_for_acting(
     q_table, target_q_table, probs_theta, rewards_theta, replay, inner_lr, K, gamma
 ):
@@ -277,7 +267,7 @@ def update_q_table_inplace_for_acting(
 # -------------------------
 # Soft value iteration (for extracting soft policy)
 # -------------------------
-#| export
+# | export
 def soft_value_iteration(probs, rewards, gamma=0.95, tol=1e-9, max_iters=10000):
     """Solve soft value iteration: Q(s,a) = r(s,a) + γ Σ_{s'} p(s'|s,a) V(s'); V(s)=logsumexp_a Q(s,a)."""
     S, A, _ = probs.shape
@@ -297,7 +287,7 @@ def soft_value_iteration(probs, rewards, gamma=0.95, tol=1e-9, max_iters=10000):
 # -------------------------
 # Empirical model fit from replay
 # -------------------------
-#| export
+# | export
 def fit_empirical_model_from_replay(replay, S, A):
     """
     Fit a simple empirical (MLE) tabular model from transitions in replay.
@@ -340,7 +330,7 @@ def compute_soft_policy_from_model(P_torch, R_torch, gamma=0.99):
 # -------------------------
 # Policy evaluation (rollouts)
 # -------------------------
-#| export
+# | export
 def evaluate_policy(env, policy_probs, n_episodes=500, seed=0):
     """
     Roll out the stationary soft policy (policy_probs: array/tensor [S,A]) for n_episodes
@@ -370,7 +360,7 @@ def evaluate_policy(env, policy_probs, n_episodes=500, seed=0):
 # -------------------------
 # Per-state KL
 # -------------------------
-#| export
+# | export
 def per_state_kl(p_true, p_est, eps=1e-12):
     p_true = p_true.clamp(min=eps)
     p_est = p_est.clamp(min=eps)
@@ -380,7 +370,7 @@ def per_state_kl(p_true, p_est, eps=1e-12):
 # -------------------------
 # Main training function (OMD) on Gymnasium env (FrozenLake)
 # -------------------------
-#| export
+# | export
 def train_omd(
     env,
     seed,
@@ -483,7 +473,7 @@ def train_omd(
 # -------------------------
 # Batch-run and evaluation (uses above functions)
 # -------------------------
-#| export
+# | export
 def batch_run(
     env_params,
     omd_params,
@@ -494,9 +484,7 @@ def batch_run(
     for i in range(n_seeds):
         seed = 1000 + i
         env = gym.make(env_params["env_name"], **env_params["env_kwargs"])
-        learned_P, learned_R, replay = train_omd(
-            env, seed, **omd_params
-        )
+        learned_P, learned_R, replay = train_omd(env, seed, **omd_params)
         pi_learned = compute_soft_policy_from_model(learned_P, learned_R, gamma=0.95)
         S = env.observation_space.n
         A = env.action_space.n
@@ -575,16 +563,18 @@ else:
 learned_means = df["mean_learn"]
 empirical_means = df["mean_emp"]
 t_stat, p_value = stats.ttest_rel(learned_means, empirical_means)
-diffs = learned_means - empirical_means
 
-mean_diff = diffs.mean()
 
-se_diff = diffs.std(ddof=1) / np.sqrt(len(diffs))
-alpha = 0.05
-df_dof = len(diffs) - 1
-t_crit = stats.t.ppf(1 - alpha / 2, df_dof)
-ci_lower = mean_diff - t_crit * se_diff
-ci_upper = mean_diff + t_crit * se_diff
+def t_test_with_ci(x, y, alpha=0.05):
+    t_stat, p_value = stats.ttest_rel(x, y)
+    se_diff = np.std(x - y, ddof=1) / np.sqrt(len(x))
+    t_crit = stats.t.ppf(1 - alpha / 2, len(x) - 1)
+    ci_lower = np.mean(x - y) - t_crit * se_diff
+    ci_upper = np.mean(x - y) + t_crit * se_diff
+    return t_stat, p_value, ci_lower, ci_upper
+
+
+t_stat, p_value, ci_lower, ci_upper = t_test_with_ci(df["mean_learn"], df["mean_emp"])
 
 print(f"paired t-test: t = {t_stat:.4f}, p = {p_value:.4e}")
 print(
@@ -621,3 +611,8 @@ plt.xticks([0, 1], ["learned_means", "empirical_means"])
 plt.ylabel("Mean episodic return")
 plt.tight_layout()
 plt.savefig(os.path.join(out_dir, "omdboxplot.png"), dpi=300)
+
+def plot_comparison(df, out_dir, col1="kl_learn_mean", col2="kl_emp_mean"):h
+    return
+
+
