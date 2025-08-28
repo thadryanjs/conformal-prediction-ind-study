@@ -51,7 +51,7 @@ full-build = { cmd = [
 
 [dependencies]
 scikit-learn = ">=1.7.0,<2"
-scipy = ">=1.16.0,<2"
+scipy = ">=1.16.1,<2"
 pandas = ">=2.3.1,<3"
 pulp = ">=2.8.0,<3"
 ipython = ">=9.4.0,<10"
@@ -67,3 +67,4 @@ pyright = ">=1.1.403,<2"
 pyqt = ">=5.15.11,<6"
 pytorch = ">=2.7.1,<3"
 gymnasium = ">=1.1.1,<2"
+nbdev = ">=2.4.5,<3"

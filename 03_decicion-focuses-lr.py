@@ -59,6 +59,7 @@ def soft_bellman_model_expected(s, a, probs_model, rewards_model, q_table, gamma
     return r_theta + gamma * expected_future
 
 
+# [inactive delimiter] [code]
 def soft_bellman_buffer_target(
     s, a, reward_from_buffer, next_state_from_buffer, target_q_table, gamma
 ):
@@ -426,78 +427,6 @@ q_table, rewards_theta, probs_theta, d = train_omd(
     seed=seed,
 )
 
-
-# [inactive delimiter] [code]
-# card draw problem
-states_cd = [0, 1]
-actions_cd = [0, 1]  # 0: hold, 1: draw
-
-S_cd = len(states_cd)
-A_cd = len(actions_cd)
-
-# Rewards: R(s, a) shape [S, A]
-rewards_cd = torch.tensor(
-    [
-        [+1.0, 0.0],  # state 0: high card -> hold=+1, draw=0
-        [-1.0, 0.0],  # state 1: low card  -> hold=-1, draw=0
-    ],
-    dtype=torch.float32,
-    device=device,
-)
-
-# Probs: P(s' | s, a) shape [S, A, S]
-# States: 0, 1
-# Actions: 0 = hold, 1 = draw
-probs_cd = torch.tensor(
-    [
-        # state 0: action 0 (hold), action 1 (draw)
-        [
-            [1.0, 0.0],  # s=0, a=0 -> stay in 0
-            [0.5, 0.5],
-        ],  # s=0, a=1 -> draw -> uniform over {0,1}
-        # state 1: action 0 (hold), action 1 (draw)
-        [
-            [0.0, 1.0],  # s=1, a=0 -> stay in 1
-            [0.5, 0.5],
-        ],  # s=1, a=1 -> draw -> uniform over {0,1}
-    ],
-    dtype=torch.float32,
-    device=device,
-)
-
-
-# [inactive delimiter] [code]
-def soft_value_iteration(probs, rewards, gamma=0.95, tol=1e-8, max_iters=10000):
-    """
-    Soft (log-sum-exp) value iteration.
-    - probs: [S,A,S]
-    - rewards: [S,A]
-    Returns: V [S], Q [S,A], soft_policy [S,A], iters
-    """
-    S, A, _ = probs.shape
-    V = torch.zeros(S, dtype=rewards.dtype, device=rewards.device)
-    Q = torch.empty((S, A), dtype=rewards.dtype, device=rewards.device)
-
-    for i in range(max_iters):
-        V_prev = V
-        # compute Q(s,a) = r(s,a) + gamma * P(s,a) @ V_prev
-        # vectorized across s,a
-        for s in range(S):
-            for a in range(A):
-                Q[s, a] = rewards[s, a] + gamma * torch.dot(probs[s, a], V_prev)
-        V = torch.logsumexp(Q, dim=1)
-        if torch.max(torch.abs(V - V_prev)) < tol:
-            break
-
-    soft_policy = F.softmax(Q, dim=1)
-    return V, Q, soft_policy, i + 1
-
-
-# Example usage (assumes probs_cd and rewards_cd exist):
-gamma_cd = 0.95
-V_cd_soft, Q_cd_soft, soft_policy_cd_from_softQ, iters_cd_soft = soft_value_iteration(
-    probs_cd, rewards_cd, gamma=gamma_cd
-)
-print("V_cd_soft:\n", V_cd_soft)
-print("Q_cd_soft:\n", Q_cd_soft)
-print("soft_policy_cd_from_softQ:\n", soft_policy_cd_from_softQ)
+print(q_table)
+print(rewards_theta)
+print(probs_theta)

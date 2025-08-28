@@ -1,0 +1,26 @@
+learned_means = learned_means
+emperical_means = empirical_means
+# Plot
+plt.figure(figsize=(6, 4))
+sns.set_style("white")
+
+# Boxplots from the two arrays (list of arrays)
+ax = sns.boxplot(data=[learned_means, emperical_means], palette=["#4c72b0", "#dd8452"], showfliers=False)
+
+# Overlay individual points (jittered) — use seaborn stripplot for dots
+sns.stripplot(data=[learned_means, emperical_means], color="k", size=6, jitter=0.12, dodge=True, alpha=0.8)
+
+# Annotate t-test p-value and mean difference
+p_text = f"paired t-test: p = {p_value:.3g}"
+md_text = f"mean diff = {mean_diff:.4f}"
+plt.text(0.5, max(np.max(learned_means), np.max(emperical_means)) * 1.05, p_text + "  |  " + md_text,
+         ha="center", va="bottom", fontsize=10)
+
+# Tidy up
+plt.xticks([0, 1], ["learned_means", "emperical_meansirical"])
+plt.ylabel("Mean episodic return")
+for spine in ["top", "right"]:
+    ax.spines[spine].set_visible(False)
+plt.tight_layout()
+plt.savefig("boxplot_with_ttest.png", dpi=200, bbox_inches="tight")
+
