@@ -1,13 +1,9 @@
+I don't remember where I saw this, but another thing to keep in mind as the dude:
 
-- **Conformal Prediction (CP)** is a method for getting calibrated uncertainty estimates for machine learning models where they are not generally available, something like confidence intervals for almost any model.
+I once saw someone comment of people enjoying "renewed access to homophobia" when people were spoofing Trump and Putin by drawing them kissing.
 
-- Surprisingly, it works for classification problems as well as regression.
-    - The regression case produces a prediction interval, similar to a confidence interval.
-    - The classification case produces sets of predictions that are guaranteed to contain the true class label with a certain probability.
+Like the Anakin/Padme meme "We're laughing about the guy he's kissing, not that he's kissing a guy, right?"...."right?"
 
-- CP works by estimating a "non-conformity" score for each sample and comparing that to a distribution of non-conformity (NC) scores derived from a subset of the data.
-   - The data are split into test, train, and calibration sets.
-   - NC scores are calculated on the calibration set, and the 1-alpha quantile of these scores ($\hat q$) is noted.
-   - When new data is encountered, the NC of the new data is compared to predicted probabilities for each class.
-   - Potential outcomes are included in the final prediction set if the NC score is less than or equal to $\hat q$.
-   - In the regression case, $\hat q$ is derived from the residuals and used to create prediction intervals by adding and subtracting $\hat q$ from the predicted value.
+And it's worth keeping that in mind when you're dunking on the Rich White Feminists of the world.
+
+As Drake once said: "I hate calling establishment women psycho bitches but the bitches ~love~ deserve it"
