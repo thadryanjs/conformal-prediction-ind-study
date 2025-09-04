@@ -32,6 +32,7 @@ class SimulationResult:
     state: State
     action: Action
     reward: Reward
+    next_state: State = field(init=False)
 
 
 @dataclass
@@ -57,11 +58,8 @@ class OffPolicySimulation:
             action = self.policy_fn(state)
             next_state = self.transition_fn(state, action)
             reward = self.reward_fn(state, action, next_state)
-            traj.append(SimulationResult(state, action, reward))
-            # If you have a transition function, update state here:
-            # state = transition_fn(state, action)
-            # For now we sample next state uniformly (or keep deterministic) as example:
-            state = random.choice(self.states)
+            traj.append(SimulationResult(state, action, reward, next_state))
+            state = next_state
         self.trajs.append(traj)
         return traj
 
@@ -153,6 +151,9 @@ print([transition_fn(5, 5) for _ in range(25)])
 
 
 # %% [code]
+def policy_fn(state: int) -> int:
+    return 0
+
 sim = OffPolicySimulation(
     states=[0, 1, 2],
     actions=[0, 1],
@@ -163,3 +164,6 @@ sim = OffPolicySimulation(
 )
 
 sim.sim_n_trajs(10)
+
+
+# %% [code]
