@@ -24,41 +24,54 @@ import random
 State = Any
 Action = Any
 Reward = float
-Trajectory = List[SimulationResult]
-
 
 @dataclass(frozen=True)
 class SimulationResult:
     state: State
     action: Action
     reward: Reward
-    next_state: State = field(init=False)
+    next_state: State
+    prob_pi_b: float = 0.0    # πb(at | xt) recorded at sampling time
+    prob_pi: float = 0.0      # π(at | xt) for target policy (for weighting)
+
+Trajectory = List[SimulationResult]
 
 
+# %% [code]
 @dataclass
 class OffPolicySimulation:
     states: List[State]
     actions: List[Action]
     horizon: int
-    # this syntax means: (state, action, state) -> reward
     reward_fn: Callable[[State, Action, State], Reward]
-    policy_fn: Callable[[State], Action]
+    # sampler for behavior policy πb (must be provided)
+    policy_sampler_b: Callable[[State], Action]
+    # probability fn for πb (must be provided)
+    policy_prob_b: Callable[[State], np.ndarray]
+    # probability fn for target π (must be provided)
+    policy_prob_target: Callable[[State], np.ndarray]
     transition_fn: Callable[[State, Action], State]
-    # prevents weird python list/constructor behavior
+    rng: np.random.Generator
     trajs: List[Trajectory] = field(default_factory=list)
 
     def simulate_traj(self, init_state: State = None) -> Trajectory:
         """
         Simulate one trajectory of length `horizon`.
         If init_state is None we sample a starting state uniformly from `states`.
+        Requires policy_sampler_b, policy_prob_b and policy_prob_target to be provided.
         """
         traj: Trajectory = []
-        state = init_state if init_state is not None else random.choice(self.states)
+        # use numpy RNG for consistent reproducibility when needed
+        state = init_state if init_state is not None else int(self.rng.choice(self.states))
         for t in range(self.horizon):
-            action = self.policy_fn(state)
+            # sample action using behavior policy sampler
+            action = int(self.policy_sampler_b(state))
+            # record probabilities under behavior and target policies
+            p_b = float(self.policy_prob_b(state)[action])
+            p_target = float(self.policy_prob_target(state)[action])
             next_state = self.transition_fn(state, action)
             reward = self.reward_fn(state, action, next_state)
-            traj.append(SimulationResult(state, action, reward, next_state))
+            traj.append(SimulationResult(state, action, reward, next_state, prob_pi_b=p_b, prob_pi=p_target))
             state = next_state
         self.trajs.append(traj)
         return traj
@@ -81,7 +94,6 @@ class OffPolicySimulation:
 # basic reward function
 def reward_fn(state, action):
     return 0
-
 
 # reward used in the paper
 def reward_fn(
@@ -151,19 +163,94 @@ print([transition_fn(5, 5) for _ in range(25)])
 
 
 # %% [code]
-def policy_fn(state: int) -> int:
-    return 0
+"""
+this builds a random sampler where certain actions are favored because they are high-reward.
+"""
+def build_epsilon_greedy_policy(policy_hat: Callable[[State], Action],
+                                n_actions: int,
+                                epsilon: float,
+                                rng: np.random.Generator = None
+                               ) -> Tuple[Callable[[State], Action], Callable[[State], np.ndarray]]:
+    rng = rng or np.random.default_rng()
 
-sim = OffPolicySimulation(
-    states=[0, 1, 2],
-    actions=[0, 1],
-    horizon=10,
-    reward_fn=reward_fn,
-    policy_fn=policy_fn,
-    transition_fn=transition_fn
-)
+    # this function assigns probabilities to each action accounting for the policy
+    def action_prob_fn(state: State) -> np.ndarray:
+        # this gives the same probabilities for all states (example: [0.05, 0.05])
+        p = np.full(n_actions, epsilon / n_actions, dtype=float)
+        # this establish the best action under the policy (example: 1)
+        best = int(policy_hat(state))
+        # add 1.0 - epsilon to the best action (example: [0.95, 0.05])
+        p[best] += 1.0 - epsilon
+        return p
 
-sim.sim_n_trajs(10)
+    # this does the actual sampling of the action
+    def sample_action_fn(state: State) -> int:
+        p = action_prob_fn(state)
+        return int(rng.choice(n_actions, p=p))
+
+    return sample_action_fn, action_prob_fn
+
+# example deterministic base policy
+def policy_hat_fn(state: int) -> int:
+    threshold = 3
+    return 1 if state < threshold else 0
+
+# test it out
+sample_action_fn, action_prob_fn = build_epsilon_greedy_policy(policy_hat_fn, 2, 0.1, rng)
+
+print(sample_action_fn(2), action_prob_fn(1))
 
 
 # %% [code]
+for i in range(10):
+    print(sample_action_fn(i), action_prob_fn(i))
+
+
+# %% [code]
+"""
+Make a policy sampler that favors the best action but allows some exploration
+"""
+def make_epsilon_greedy_factory(policy_hat: Callable[[State], Action],
+                                n_actions: int,
+                                epsilon: float,
+                                rng: np.random.Generator):
+    def action_prob_fn(state: State) -> np.ndarray:
+        p = np.full(n_actions, epsilon / n_actions, dtype=float)
+        best = int(policy_hat(state))
+        p[best] += 1.0 - epsilon
+        return p
+
+    def sample_action_fn(state: State) -> int:
+        p = action_prob_fn(state)
+        return int(rng.choice(n_actions, p=p))
+
+    return sample_action_fn, action_prob_fn
+
+# example deterministic base policy
+def example_policy_hat(state: int) -> int:
+    threshold = 3
+    return 1 if state < threshold else 0
+
+# test it out
+pi_b_sampler, pi_b_prob = make_epsilon_greedy_factory(example_policy_hat, n_actions=2, epsilon=0.4, rng=rng)
+# we don't need the sampler for the this one because we're not generating trajs
+_, pi_prob = make_epsilon_greedy_factory(example_policy_hat, n_actions=2, epsilon=0.2, rng=rng)
+
+
+# %% [code]
+sim = OffPolicySimulation(
+    states=list(range(0, 11)),
+    actions=[0, 1],
+    horizon=10,
+    reward_fn=reward_fn,
+    policy_sampler_b=pi_b_sampler,
+    policy_prob_b=pi_b_prob,
+    policy_prob_target=pi_prob,
+    transition_fn=transition_fn,
+    rng=rng
+)
+
+trajs = sim.sim_n_trajs(5)
+for i, tr in enumerate(trajs):
+    print(f"Traj {i}: return={sum(s.reward for s in tr)}, initial_state={tr[0].state}")
+    print(" per-step probs (πb, π):", [(s.prob_pi_b, s.prob_pi) for s in tr])
