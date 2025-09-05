@@ -96,6 +96,7 @@ class OffPolicySimulation:
 
 # %% [code]
 # reward used in the paper
+# TODO: types?
 def reward_fn(
     current_inventory,
     order_quantity,
