@@ -17,7 +17,7 @@
 
 # %% [code]
 from dataclasses import dataclass, field
-from typing import Callable, List, Tuple, Any
+from typing import Callable, List, Tuple, Any, Union
 import numpy as np
 import random
 
@@ -25,17 +25,20 @@ State = Any
 Action = Any
 Reward = float
 
+
 @dataclass(frozen=True)
-class SimulationResult:
+class TrajectoryStep:
     state: State
     action: Action
     reward: Reward
     next_state: State
-    prob_pi_b: float = 0.0    # πb(at | xt) recorded at sampling time
-    prob_pi: float = 0.0      # π(at | xt) for target policy (for weighting)
+    prob_pi_b: float = 0.0  # πb(at | xt) recorded at sampling time
+    prob_pi: float = 0.0  # π(at | xt) for target policy (for weighting)
 
-Trajectory = List[SimulationResult]
-
+@dataclass(frozen=True)
+class Trajectory:
+    trajs: List[TrajectoryStep]
+    cumulative_reward: float
 
 # %% [code]
 @dataclass
@@ -54,47 +57,44 @@ class OffPolicySimulation:
     rng: np.random.Generator
     trajs: List[Trajectory] = field(default_factory=list)
 
-    def simulate_traj(self, init_state: State = None) -> Trajectory:
+    def simulate_traj(self) -> Trajectory:
         """
-        Simulate one trajectory of length `horizon`.
-        If init_state is None we sample a starting state uniformly from `states`.
-        Requires policy_sampler_b, policy_prob_b and policy_prob_target to be provided.
         """
-        traj: Trajectory = []
-        # use numpy RNG for consistent reproducibility when needed
-        state = init_state if init_state is not None else int(self.rng.choice(self.states))
+        traj_steps: List[TrajectoryStep] = []
+        # use RNG for consistent reproducibility when needed
+        state = self.rng.choice(self.states)
+        cumulative_reward = 0
         for t in range(self.horizon):
             # sample action using behavior policy sampler
             action = int(self.policy_sampler_b(state))
             # record probabilities under behavior and target policies
             p_b = float(self.policy_prob_b(state)[action])
-            p_target = float(self.policy_prob_target(state)[action])
+            # p_target = float(self.policy_prob_target(state)[action])
+            p_target = np.array([float(p) for p in self.policy_prob_target(state)])
+            print(p_b, p_target)
             next_state = self.transition_fn(state, action)
             reward = self.reward_fn(state, action, next_state)
-            traj.append(SimulationResult(state, action, reward, next_state, prob_pi_b=p_b, prob_pi=p_target))
+            traj_steps.append(
+                TrajectoryStep(
+                    state, action, reward, next_state, prob_pi_b=p_b, prob_pi=p_target,
+                )
+            )
             state = next_state
-        self.trajs.append(traj)
-        return traj
+            cumulative_reward += reward
+        return Trajectory(traj_steps, cumulative_reward)
 
-    def sim_n_trajs(self, n: int, init_states: List[State] = None) -> List[Trajectory]:
+    def sim_n_trajs(self, n: int) -> None:
         """Simulate n trajectories. Optionally provide a list of initial states."""
-        results = []
+        results: List[Trajectory] = []
         for i in range(n):
-            init = None
-            if init_states is not None and i < len(init_states):
-                init = init_states[i]
-            results.append(self.simulate_traj(init))
-        return results
+            results.append(self.simulate_traj())
+        self.trajs = results
 
-    def get_trajs(self, n: int = None) -> List[Trajectory]:
+    def get_trajs(self, n: Union[int, None] = 10) -> List[Trajectory]:
         return self.trajs if n is None else self.trajs[:n]
 
 
 # %% [code]
-# basic reward function
-def reward_fn(state, action):
-    return 0
-
 # reward used in the paper
 def reward_fn(
     current_inventory,
@@ -136,8 +136,11 @@ def reward_fn(
 We make a function that returns another function so we can use variables from the outer scope inside the class. This is slightly more complex, but means we don't have to have two different version of the same class if we want to compare two runs with different transition functions.
 """
 
+
 # %% [code]
-def build_transition_fn(max_capacity: int, demand_rate: float, rng: np.random.Generator = None) -> Callable[[int, int], int]:
+def build_transition_fn(
+    max_capacity: int, demand_rate: float, rng: np.random.Generator
+) -> Callable[[int, int], int]:
 
     rng = rng or np.random.default_rng()
 
@@ -148,6 +151,7 @@ def build_transition_fn(max_capacity: int, demand_rate: float, rng: np.random.Ge
         demand = int(rng.poisson(demand_rate))
         next_state = max(0, post_order - demand)
         return next_state
+
     return transition
 
 
@@ -166,11 +170,14 @@ print([transition_fn(5, 5) for _ in range(25)])
 """
 this builds a random sampler where certain actions are favored because they are high-reward.
 """
-def build_epsilon_greedy_policy(policy_hat: Callable[[State], Action],
-                                n_actions: int,
-                                epsilon: float,
-                                rng: np.random.Generator = None
-                               ) -> Tuple[Callable[[State], Action], Callable[[State], np.ndarray]]:
+
+
+def build_epsilon_greedy_policy(
+    policy_hat: Callable[[State], Action],
+    n_actions: int,
+    epsilon: float,
+    rng: np.random.Generator,
+) -> Tuple[Callable[[State], Action], Callable[[State], np.ndarray]]:
     rng = rng or np.random.default_rng()
 
     # this function assigns probabilities to each action accounting for the policy
@@ -190,13 +197,17 @@ def build_epsilon_greedy_policy(policy_hat: Callable[[State], Action],
 
     return sample_action_fn, action_prob_fn
 
+
 # example deterministic base policy
 def policy_hat_fn(state: int) -> int:
     threshold = 3
     return 1 if state < threshold else 0
 
+
 # test it out
-sample_action_fn, action_prob_fn = build_epsilon_greedy_policy(policy_hat_fn, 2, 0.1, rng)
+sample_action_fn, action_prob_fn = build_epsilon_greedy_policy(
+    policy_hat_fn, 2, 0.1, rng
+)
 
 print(sample_action_fn(2), action_prob_fn(1))
 
@@ -210,10 +221,14 @@ for i in range(10):
 """
 Make a policy sampler that favors the best action but allows some exploration
 """
-def make_epsilon_greedy_factory(policy_hat: Callable[[State], Action],
-                                n_actions: int,
-                                epsilon: float,
-                                rng: np.random.Generator):
+
+
+def make_epsilon_greedy_factory(
+    policy_hat: Callable[[State], Action],
+    n_actions: int,
+    epsilon: float,
+    rng: np.random.Generator,
+):
     def action_prob_fn(state: State) -> np.ndarray:
         p = np.full(n_actions, epsilon / n_actions, dtype=float)
         best = int(policy_hat(state))
@@ -226,15 +241,21 @@ def make_epsilon_greedy_factory(policy_hat: Callable[[State], Action],
 
     return sample_action_fn, action_prob_fn
 
+
 # example deterministic base policy
 def example_policy_hat(state: int) -> int:
     threshold = 3
     return 1 if state < threshold else 0
 
+
 # test it out
-pi_b_sampler, pi_b_prob = make_epsilon_greedy_factory(example_policy_hat, n_actions=2, epsilon=0.4, rng=rng)
+pi_b_sampler, pi_b_prob = make_epsilon_greedy_factory(
+    example_policy_hat, n_actions=2, epsilon=0.4, rng=rng
+)
 # we don't need the sampler for the this one because we're not generating trajs
-_, pi_prob = make_epsilon_greedy_factory(example_policy_hat, n_actions=2, epsilon=0.2, rng=rng)
+_, pi_prob = make_epsilon_greedy_factory(
+    example_policy_hat, n_actions=2, epsilon=0.2, rng=rng
+)
 
 
 # %% [code]
@@ -247,10 +268,16 @@ sim = OffPolicySimulation(
     policy_prob_b=pi_b_prob,
     policy_prob_target=pi_prob,
     transition_fn=transition_fn,
-    rng=rng
+    rng=rng,
 )
 
-trajs = sim.sim_n_trajs(5)
+
+# %% [code]
+sim.sim_n_trajs(10)
+
+trajs = sim.get_trajs(5)
+
 for i, tr in enumerate(trajs):
-    print(f"Traj {i}: return={sum(s.reward for s in tr)}, initial_state={tr[0].state}")
-    print(" per-step probs (πb, π):", [(s.prob_pi_b, s.prob_pi) for s in tr])
+    print(f"Trajectory {i}")
+
+
